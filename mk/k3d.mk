@@ -39,6 +39,13 @@ KUMA_NAMESPACE ?= kuma-system
 #  [...etc]
 PORT_PREFIX := $$(($(patsubst 300-%,300+%-1,$(KIND_CLUSTER_NAME:kuma%=300%))))
 
+# To run eBPF transparent proxy in K3D, we need to mount this extra shared volume.
+# It only works on Linux (Docker for Mac is not supported).
+EBPF_MOUNT_ARGS ?=
+ifeq ($(UNAME_S), Linux)
+	EBPF_MOUNT_ARGS = -v /tmp/kuma:/run/kuma:shared
+endif
+
 .PHONY: k3d/network/create
 k3d/network/create:
 	@touch $(BUILD_DIR)/k3d_network.lock && \
@@ -49,14 +56,14 @@ k3d/network/create:
 .PHONY: k3d/start
 k3d/start: ${KIND_KUBECONFIG_DIR} k3d/network/create
 	@echo "PORT_PREFIX=$(PORT_PREFIX)"
-	@KUBECONFIG=$(KIND_KUBECONFIG) \
+	@KUBECONFIG=$(KIND_KUBECONFIG) K3D_FIX_CGROUPV2=true \
 		k3d cluster create "$(KIND_CLUSTER_NAME)" \
 			-i rancher/k3s:$(CI_K3S_VERSION) \
 			--k3s-arg '--no-deploy=traefik@server:0' \
 			--k3s-arg '--disable=metrics-server@server:0' \
 			--network kind \
 			--port "$(PORT_PREFIX)80-$(PORT_PREFIX)89:30080-30089@server:0" \
-			--timeout 120s && \
+			--timeout 120s $(EBPF_MOUNT_ARGS) && \
 	$(MAKE) k3d/wait
 	@echo
 	@echo '>>> You need to manually run the following command in your shell: >>>'
@@ -92,7 +99,7 @@ k3d/load:
 
 .PHONY: k3d/deploy/kuma
 k3d/deploy/kuma: build/kumactl k3d/load
-	@KUBECONFIG=$(KIND_KUBECONFIG) $(BUILD_ARTIFACTS_DIR)/kumactl/kumactl install --mode $(KUMA_MODE) control-plane $(KUMACTL_INSTALL_CONTROL_PLANE_IMAGES) | KUBECONFIG=$(KIND_KUBECONFIG)  kubectl apply -f -
+	@KUBECONFIG=$(KIND_KUBECONFIG) $(BUILD_ARTIFACTS_DIR)/kumactl/kumactl install --mode $(KUMA_MODE) control-plane $(KUMACTL_INSTALL_CONTROL_PLANE_IMAGES) --set experimental.ebpf.enabled=true | KUBECONFIG=$(KIND_KUBECONFIG)  kubectl apply -f -
 	@KUBECONFIG=$(KIND_KUBECONFIG) kubectl wait --timeout=60s --for=condition=Available -n $(KUMA_NAMESPACE) deployment/kuma-control-plane
 	@KUBECONFIG=$(KIND_KUBECONFIG) kubectl wait --timeout=60s --for=condition=Ready -n $(KUMA_NAMESPACE) pods -l app=kuma-control-plane
 	until \

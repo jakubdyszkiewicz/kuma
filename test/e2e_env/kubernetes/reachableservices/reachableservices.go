@@ -1,6 +1,8 @@
 package reachableservices
 
 import (
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -48,6 +50,7 @@ func ReachableServices() {
 	})
 
 	It("should be able to connect to reachable services", func() {
+		time.Sleep(10 * time.Hour)
 		// when
 		_, stderr, err := env.Cluster.ExecWithRetries(namespace, clientPodName, "client-server",
 			"curl", "-v", "-m", "3", "--fail", "first-test-server_reachable-svc_svc_80.mesh")

@@ -34,6 +34,9 @@ var _ = SynchronizedBeforeSuite(
 		env.Cluster = NewK8sCluster(NewTestingT(), Kuma1, Verbose)
 		Expect(env.Cluster.Install(Kuma(core.Standalone,
 			WithEnv("KUMA_STORE_UNSAFE_DELETE", "true"),
+			WithCtlOpts(map[string]string{
+				"--set": "experimental.ebpf.enabled=true",
+			}),
 		))).To(Succeed())
 		portFwd := env.Cluster.GetKuma().(*K8sControlPlane).PortFwd()
 
@@ -84,5 +87,5 @@ var _ = Describe("Tracing", observability.Tracing, Ordered)
 var _ = Describe("Traffic Log", trafficlog.TCPLogging, Ordered)
 var _ = Describe("Inspect", inspect.Inspect, Ordered)
 var _ = Describe("K8S API Bypass", k8s_api_bypass.K8sApiBypass, Ordered)
-var _ = Describe("Reachable Services", reachableservices.ReachableServices, Ordered)
+var _ = FDescribe("Reachable Services", reachableservices.ReachableServices, Ordered)
 var _ = Describe("Defaults", defaults.Defaults, Ordered)
