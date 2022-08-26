@@ -2,20 +2,12 @@ package v3
 
 import (
 	"context"
-	"encoding/gob"
-	"net/rpc"
-	"os"
-	"os/exec"
-	"time"
 
-	envoy_cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoy_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_types "github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	envoy_cache "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoy_resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	protov1 "github.com/golang/protobuf/proto"
-	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-plugin"
 	"github.com/pkg/errors"
 
 	"github.com/kumahq/kuma/pkg/core"
@@ -109,6 +101,7 @@ func (r *reconciler) Reconcile(ctx xds_context.Context, proxy *model.Proxy) erro
 	for _, version := range changed {
 		r.statsCallbacks.ConfigReadyForDelivery(version)
 	}
+
 	return nil
 }
 
@@ -167,87 +160,9 @@ type snapshotGenerator interface {
 type templateSnapshotGenerator struct {
 	ProxyTemplateResolver xds_template.ProxyTemplateResolver
 	ResourceSetHooks      []xds_hooks.ResourceSetHook
-
-	client     *plugin.Client
-	clusterMod ClusterMod
-}
-
-type ClusterMod interface {
-	Cluster() model.Resource
-}
-
-type ClusterModRPC struct{ client *rpc.Client }
-
-func (g *ClusterModRPC) Cluster() model.Resource {
-	var resp model.Resource
-	err := g.client.Call("Plugin.Cluster", new(interface{}), &resp)
-	if err != nil {
-		// You usually want your interfaces to return errors. If they don't,
-		// there isn't much other choice here.
-		panic(err)
-	}
-
-	return resp
-}
-
-type ClusterModRPCServer struct {
-	// This is the real implementation
-	Impl ClusterMod
-}
-
-func (s *ClusterModRPCServer) Cluster(args interface{}, resp *model.Resource) error {
-	*resp = s.Impl.Cluster()
-	return nil
-}
-
-type ClusterModPlugin struct {
-	Impl ClusterMod
-}
-
-func (ClusterModPlugin) Client(b *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
-	return &ClusterModRPC{client: c}, nil
-}
-
-func (p *ClusterModPlugin) Server(*plugin.MuxBroker) (interface{}, error) {
-	return &ClusterModRPCServer{Impl: p.Impl}, nil
-}
-
-var handshakeConfig = plugin.HandshakeConfig{
-	ProtocolVersion:  1,
-	MagicCookieKey:   "BASIC_PLUGIN",
-	MagicCookieValue: "hello",
-}
-
-var pluginMap = map[string]plugin.Plugin{
-	"clusterMod": &ClusterModPlugin{},
 }
 
 func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, proxy *model.Proxy) (envoy_cache.Snapshot, error) {
-	if s.client == nil {
-		gob.Register(envoy_cluster.Cluster{})
-		gob.Register(envoy_cluster.Cluster_Type{})
-		logger := hclog.New(&hclog.LoggerOptions{
-			Name:   "plugin",
-			Output: os.Stdout,
-			Level:  hclog.Debug,
-		})
-		s.client = plugin.NewClient(&plugin.ClientConfig{
-			HandshakeConfig: handshakeConfig,
-			Plugins:         pluginMap,
-			Cmd:             exec.Command("/Users/jakub/kong/go-plugins-new-cluster/plugin"),
-			Logger:          logger,
-		})
-		rpcClient, err := s.client.Client()
-		if err != nil {
-			return envoy_cache.Snapshot{}, err
-		}
-		raw, err := rpcClient.Dispense("clusterMod")
-		if err != nil {
-			return envoy_cache.Snapshot{}, err
-		}
-		s.clusterMod = raw.(ClusterMod)
-	}
-
 	template := s.ProxyTemplateResolver.GetTemplate(proxy)
 
 	gen := generator.ProxyTemplateGenerator{ProxyTemplate: template}
@@ -265,24 +180,6 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 	if err := modifications.Apply(rs, template.GetConf().GetModifications(), proxy.APIVersion); err != nil {
 		return envoy_cache.Snapshot{}, errors.Wrap(err, "could not apply modifications")
 	}
-
-	now := time.Now()
-	resource := s.clusterMod.Cluster()
-	//c := envoy_cluster.Cluster{}
-	//if err := jsonpb.Unmarshal(bytes.NewReader(clusterBytes), &c); err != nil {
-	//	return envoy_cache.Snapshot{}, err
-	//}
-	core.Log.Info("RPC done. It took", "time", time.Now().Sub(now))
-	core.Log.Info("CLUSTER IS", "resource", resource)
-	//c := envoy_cluster.Cluster{
-	//	Name:                 "test-cluster",
-	//	ClusterDiscoveryType: &envoy_cluster.Cluster_Type{Type: envoy_cluster.Cluster_STATIC},
-	//	ConnectTimeout: &duration.Duration{
-	//		Seconds: 5,
-	//	},
-	//}
-
-	rs.Add(&resource)
 
 	version := "" // empty value is a sign to other components to generate the version automatically
 	resources := map[envoy_resource.Type][]envoy_types.Resource{}

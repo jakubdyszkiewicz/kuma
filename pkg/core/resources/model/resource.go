@@ -117,12 +117,26 @@ func (d ResourceTypeDescriptor) NewObject() Resource {
 	if err := resource.SetSpec(newSpec); err != nil {
 		panic(errors.Wrap(err, "could not set spec on the new resource"))
 	}
+	if el, ok := resource.(ExtendedType); ok {
+		el.SetType(d.Name)
+		el.SetDescriptor(d)
+	}
 	return resource
+}
+
+type ExtendedType interface {
+	SetType(ResourceType)
+	SetDescriptor(desc ResourceTypeDescriptor)
 }
 
 func (d ResourceTypeDescriptor) NewList() ResourceList {
 	listType := reflect.TypeOf(d.ResourceList).Elem()
-	return reflect.New(listType).Interface().(ResourceList)
+	list := reflect.New(listType).Interface().(ResourceList)
+	if el, ok := list.(ExtendedType); ok {
+		el.SetType(d.Name)
+		el.SetDescriptor(d)
+	}
+	return list
 }
 
 type TypeFilter interface {

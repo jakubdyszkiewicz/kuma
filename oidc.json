@@ -1,0 +1,8 @@
+{
+    "type": "oidc",
+    "mesh": "default",
+    "name": "test-oidc",
+    "conf": {
+        "a": "b"
+    }
+}
