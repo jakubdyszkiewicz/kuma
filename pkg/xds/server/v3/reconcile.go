@@ -1,8 +1,8 @@
 package v3
 
 import (
-	"bytes"
 	"context"
+	"encoding/gob"
 	"net/rpc"
 	"os"
 	"os/exec"
@@ -13,7 +13,6 @@ import (
 	envoy_types "github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	envoy_cache "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoy_resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
-	"github.com/golang/protobuf/jsonpb"
 	protov1 "github.com/golang/protobuf/proto"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
@@ -174,13 +173,13 @@ type templateSnapshotGenerator struct {
 }
 
 type ClusterMod interface {
-	Cluster() []byte
+	Cluster() model.Resource
 }
 
 type ClusterModRPC struct{ client *rpc.Client }
 
-func (g *ClusterModRPC) Cluster() []byte {
-	var resp []byte
+func (g *ClusterModRPC) Cluster() model.Resource {
+	var resp model.Resource
 	err := g.client.Call("Plugin.Cluster", new(interface{}), &resp)
 	if err != nil {
 		// You usually want your interfaces to return errors. If they don't,
@@ -196,7 +195,7 @@ type ClusterModRPCServer struct {
 	Impl ClusterMod
 }
 
-func (s *ClusterModRPCServer) Cluster(args interface{}, resp *[]byte) error {
+func (s *ClusterModRPCServer) Cluster(args interface{}, resp *model.Resource) error {
 	*resp = s.Impl.Cluster()
 	return nil
 }
@@ -225,6 +224,8 @@ var pluginMap = map[string]plugin.Plugin{
 
 func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, proxy *model.Proxy) (envoy_cache.Snapshot, error) {
 	if s.client == nil {
+		gob.Register(envoy_cluster.Cluster{})
+		gob.Register(envoy_cluster.Cluster_Type{})
 		logger := hclog.New(&hclog.LoggerOptions{
 			Name:   "plugin",
 			Output: os.Stdout,
@@ -266,13 +267,13 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 	}
 
 	now := time.Now()
-	clusterBytes := s.clusterMod.Cluster()
-	c := envoy_cluster.Cluster{}
-	if err := jsonpb.Unmarshal(bytes.NewReader(clusterBytes), &c); err != nil {
-		return envoy_cache.Snapshot{}, err
-	}
+	resource := s.clusterMod.Cluster()
+	//c := envoy_cluster.Cluster{}
+	//if err := jsonpb.Unmarshal(bytes.NewReader(clusterBytes), &c); err != nil {
+	//	return envoy_cache.Snapshot{}, err
+	//}
 	core.Log.Info("RPC done. It took", "time", time.Now().Sub(now))
-	core.Log.Info("CLUSTER IS", "cluster", c)
+	core.Log.Info("CLUSTER IS", "resource", resource)
 	//c := envoy_cluster.Cluster{
 	//	Name:                 "test-cluster",
 	//	ClusterDiscoveryType: &envoy_cluster.Cluster_Type{Type: envoy_cluster.Cluster_STATIC},
@@ -281,11 +282,7 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 	//	},
 	//}
 
-	rs.Add(&model.Resource{
-		Name:     c.Name,
-		Origin:   "INTERNET",
-		Resource: &c,
-	})
+	rs.Add(&resource)
 
 	version := "" // empty value is a sign to other components to generate the version automatically
 	resources := map[envoy_resource.Type][]envoy_types.Resource{}
