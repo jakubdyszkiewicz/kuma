@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/emicklei/go-restful/v3"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	config_core "github.com/kumahq/kuma/pkg/config/core"
 	"github.com/kumahq/kuma/pkg/core"
@@ -132,6 +133,12 @@ func (r *resourceEndpoints) createOrUpdateResource(request *restful.Request, res
 	if err := request.ReadEntity(&resourceRes); err != nil {
 		rest_errors.HandleError(response, err, "Could not process a resource")
 		return
+	}
+
+	if st, ok := resourceRes.Spec.(*structpb.Struct); ok {
+		delete(st.Fields, "mesh")
+		delete(st.Fields, "name")
+		delete(st.Fields, "type")
 	}
 
 	if err := r.validateResourceRequest(request, &resourceRes); err != nil {

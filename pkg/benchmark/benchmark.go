@@ -39,6 +39,29 @@ func Setup() error {
 		return err
 	}
 
+	desc2 := core_model.ResourceTypeDescriptor{
+		Name:     "opa",
+		Resource: NewExtensionResource("opa"),
+		ResourceList: &ExtensionResourceList{
+			Type: "opa",
+		},
+		ReadOnly:            false,
+		AdminOnly:           false,
+		Scope:               core_model.ScopeMesh,
+		KDSFlags:            core_model.FromGlobalToZone,
+		WsPath:              "opas",
+		KumactlArg:          "opa",
+		KumactlListArg:      "opas",
+		AllowToInspect:      true,
+		IsPolicy:            true,
+		SingularDisplayName: "OPA",
+		PluralDisplayName:   "OPAs",
+		IsExperimental:      false,
+	}
+	if err := registry.Global().RegisterType(desc2); err != nil {
+		return err
+	}
+
 	//gob.Register(ExtensionResource{})
 	//gob.Register(ExtensionResourceList{})
 	descriptor, err := hook.PolicyDescriptor()

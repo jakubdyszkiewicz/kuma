@@ -72,7 +72,11 @@ func (l *ExtensionResourceList) GetItemType() core_model.ResourceType {
 }
 
 func (l *ExtensionResourceList) NewItem() core_model.Resource {
-	return NewExtensionResource(l.Type)
+	return &ExtensionResource{
+		Spec: &structpb.Struct{},
+		Type: l.Type,
+		Desc: l.Desc,
+	}
 }
 
 func (l *ExtensionResourceList) AddItem(r core_model.Resource) error {
