@@ -127,6 +127,7 @@ rules:
       - healthchecks
       - trafficlogs
       - traffictraces
+      - oidcs
       - meshgateways
       - meshgatewayroutes
       - meshgatewayinstances

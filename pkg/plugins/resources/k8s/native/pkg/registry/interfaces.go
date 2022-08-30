@@ -1,19 +1,16 @@
 package registry
 
 import (
-	"google.golang.org/protobuf/proto"
-
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/model"
 )
 
-type ResourceType = proto.Message
-
 type TypeRegistry interface {
-	RegisterObjectType(ResourceType, model.KubernetesObject) error
-	RegisterObjectTypeIfAbsent(ResourceType, model.KubernetesObject)
-	RegisterListType(ResourceType, model.KubernetesList) error
-	RegisterListTypeIfAbsent(ResourceType, model.KubernetesList)
+	RegisterObjectType(core_model.ResourceType, model.KubernetesObject) error
+	RegisterObjectTypeIfAbsent(core_model.ResourceType, model.KubernetesObject)
+	RegisterListType(core_model.ResourceType, model.KubernetesList) error
+	RegisterListTypeIfAbsent(core_model.ResourceType, model.KubernetesList)
 
-	NewObject(ResourceType) (model.KubernetesObject, error)
-	NewList(ResourceType) (model.KubernetesList, error)
+	NewObject(core_model.ResourceType) (model.KubernetesObject, error)
+	NewList(core_model.ResourceType) (model.KubernetesList, error)
 }

@@ -50,11 +50,7 @@ func (k *listener) Start(stop <-chan struct{}) error {
 		if err != nil {
 			return err
 		}
-		coreObj, err := core_registry.Global().NewObject(t)
-		if err != nil {
-			return err
-		}
-		obj, err := k8s_registry.Global().NewObject(coreObj.GetSpec())
+		obj, err := k8s_registry.Global().NewObject(t)
 		if err != nil {
 			return err
 		}

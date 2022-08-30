@@ -44,6 +44,8 @@ import (
 	kds_context "github.com/kumahq/kuma/pkg/kds/context"
 	"github.com/kumahq/kuma/pkg/metrics"
 	metrics_store "github.com/kumahq/kuma/pkg/metrics/store"
+	k8s_extensions "github.com/kumahq/kuma/pkg/plugins/extensions/k8s"
+	"github.com/kumahq/kuma/pkg/plugins/resources/k8s"
 	tokens_access "github.com/kumahq/kuma/pkg/tokens/builtin/access"
 	zone_access "github.com/kumahq/kuma/pkg/tokens/builtin/zone/access"
 	xds_hooks "github.com/kumahq/kuma/pkg/xds/hooks"
@@ -75,11 +77,27 @@ func buildRuntime(appCtx context.Context, cfg kuma_cp.Config) (core_runtime.Runt
 	if err := initializeConfigStore(cfg, builder); err != nil {
 		return nil, err
 	}
+
+	mgr, ok := k8s_extensions.FromManagerContext(builder.Extensions())
+	if !ok {
+		return nil, errors.Errorf("k8s controller runtime Manager hasn't been configured")
+	}
+	converter, ok := k8s_extensions.FromResourceConverterContext(builder.Extensions())
+	if !ok {
+		return nil, errors.Errorf("k8s resource converter hasn't been configured")
+	}
+
+	st := &k8s.ExtensionResourceStore{
+		Client:    mgr.GetClient(),
+		Converter: converter,
+	}
+
 	// we add Secret store to unified ResourceStore so global<->zone synchronizer can use unified interface
 	builder.WithResourceStore(core_store.NewCustomizableResourceStore(builder.ResourceStore(), map[core_model.ResourceType]core_store.ResourceStore{
 		system.SecretType:       builder.SecretStore(),
 		system.GlobalSecretType: builder.SecretStore(),
 		system.ConfigType:       builder.ConfigStore(),
+		"oidc":                  st,
 	}))
 
 	initializeConfigManager(builder)

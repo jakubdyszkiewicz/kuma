@@ -12,6 +12,7 @@ import (
 	kube_types "k8s.io/apimachinery/pkg/types"
 	kube_client "sigs.k8s.io/controller-runtime/pkg/client"
 
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
 	k8s_model "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/model"
 	k8s_registry "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
 )
@@ -37,7 +38,7 @@ func ReconcileLabelledObject(
 	client kube_client.Client,
 	owner kube_types.NamespacedName,
 	ownerMesh string,
-	ownedType k8s_registry.ResourceType,
+	ownedType core_model.ResourceType,
 	ownedSpec proto.Message,
 ) error {
 	// First we list which existing objects are owned by this owner.

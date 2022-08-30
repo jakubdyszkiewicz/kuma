@@ -10,8 +10,8 @@ import (
 	kube_ctrl "sigs.k8s.io/controller-runtime"
 	gatewayapi "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core"
+	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 	core_runtime "github.com/kumahq/kuma/pkg/core/runtime"
 	k8s_common "github.com/kumahq/kuma/pkg/plugins/common/k8s"
 	k8s_registry "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
@@ -38,7 +38,7 @@ func gatewayAPICRDsPresent(mgr kube_ctrl.Manager) bool {
 func meshGatewayCRDsPresent() bool {
 	// If we haven't registered our type, we're not reconciling MeshGatewayInstance
 	// or gatewayapi objects.
-	if _, err := k8s_registry.Global().NewObject(&mesh_proto.MeshGateway{}); err != nil {
+	if _, err := k8s_registry.Global().NewObject(core_mesh.MeshGatewayType); err != nil {
 		var unknownTypeError *k8s_registry.UnknownTypeError
 		if errors.As(err, &unknownTypeError) {
 			return false

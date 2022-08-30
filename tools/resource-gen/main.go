@@ -23,6 +23,7 @@ var CustomResourceTemplate = template.Must(template.New("custom-resource").Parse
 
 {{ $pkg := printf "%s_proto" .Package }}
 {{ $tk := "` + "`" + `" }}
+{{ $corepkg := printf "core_%s" .Package }}
 
 // nolint:whitespace
 package v1alpha1
@@ -36,6 +37,7 @@ import (
 
 	{{ $pkg }} "github.com/kumahq/kuma/api/{{ .Package }}/v1alpha1"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/model"
+	{{ $corepkg }} "github.com/kumahq/kuma/pkg/core/resources/apis/{{ .Package }}"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
 	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
@@ -159,13 +161,13 @@ func (l *{{.ResourceType}}List) GetItems() []model.KubernetesObject {
 
 {{if not .SkipRegistration}}
 func init() {
-	registry.RegisterObjectType(&{{ $pkg }}.{{.ProtoType}}{}, &{{.ResourceType}}{
+	registry.RegisterObjectType({{ $corepkg }}.{{.ProtoType}}Type, &{{.ResourceType}}{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "{{.ResourceType}}",
 		},
 	})
-	registry.RegisterListType(&{{ $pkg }}.{{.ProtoType}}{}, &{{.ResourceType}}List{
+	registry.RegisterListType({{ $corepkg }}.{{.ProtoType}}Type, &{{.ResourceType}}List{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "{{.ResourceType}}List",

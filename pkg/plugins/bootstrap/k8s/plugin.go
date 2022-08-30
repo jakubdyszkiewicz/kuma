@@ -158,6 +158,23 @@ func (p *plugin) AfterBootstrap(b *core_runtime.Builder, _ core_plugins.PluginCo
 
 	b.XDSHooks().AddResourceSetHook(hooks.NewApiServerBypass(apiServerAddress, uint32(apiServerPort)))
 
+	//mgr, ok := k8s_extensions.FromManagerContext(b.Extensions())
+	//if !ok {
+	//	return errors.Errorf("k8s controller runtime Manager hasn't been configured")
+	//}
+	//converter, ok := k8s_extensions.FromResourceConverterContext(b.Extensions())
+	//if !ok {
+	//	return errors.Errorf("k8s resource converter hasn't been configured")
+	//}
+	//
+	//st := &k8s.ExtensionResourceStore{
+	//	Client:    mgr.GetClient(),
+	//	Converter: converter,
+	//}
+	//b.WithResourceStore(core_store.NewCustomizableResourceStore(b.ResourceStore(), map[model.ResourceType]core_store.ResourceStore{
+	//	"oidc": st,
+	//}))
+
 	return nil
 }
 

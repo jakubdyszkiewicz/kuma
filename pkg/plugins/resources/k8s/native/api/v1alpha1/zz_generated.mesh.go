@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/model"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
 	util_proto "github.com/kumahq/kuma/pkg/util/proto"
@@ -99,13 +100,13 @@ func (l *CircuitBreakerList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.CircuitBreaker{}, &CircuitBreaker{
+	registry.RegisterObjectType(core_mesh.CircuitBreakerType, &CircuitBreaker{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "CircuitBreaker",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.CircuitBreaker{}, &CircuitBreakerList{
+	registry.RegisterListType(core_mesh.CircuitBreakerType, &CircuitBreakerList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "CircuitBreakerList",
@@ -195,13 +196,13 @@ func (l *DataplaneList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.Dataplane{}, &Dataplane{
+	registry.RegisterObjectType(core_mesh.DataplaneType, &Dataplane{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "Dataplane",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.Dataplane{}, &DataplaneList{
+	registry.RegisterListType(core_mesh.DataplaneType, &DataplaneList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "DataplaneList",
@@ -293,13 +294,13 @@ func (l *DataplaneInsightList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.DataplaneInsight{}, &DataplaneInsight{
+	registry.RegisterObjectType(core_mesh.DataplaneInsightType, &DataplaneInsight{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "DataplaneInsight",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.DataplaneInsight{}, &DataplaneInsightList{
+	registry.RegisterListType(core_mesh.DataplaneInsightType, &DataplaneInsightList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "DataplaneInsightList",
@@ -389,13 +390,13 @@ func (l *ExternalServiceList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.ExternalService{}, &ExternalService{
+	registry.RegisterObjectType(core_mesh.ExternalServiceType, &ExternalService{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ExternalService",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.ExternalService{}, &ExternalServiceList{
+	registry.RegisterListType(core_mesh.ExternalServiceType, &ExternalServiceList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ExternalServiceList",
@@ -485,13 +486,13 @@ func (l *FaultInjectionList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.FaultInjection{}, &FaultInjection{
+	registry.RegisterObjectType(core_mesh.FaultInjectionType, &FaultInjection{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "FaultInjection",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.FaultInjection{}, &FaultInjectionList{
+	registry.RegisterListType(core_mesh.FaultInjectionType, &FaultInjectionList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "FaultInjectionList",
@@ -581,13 +582,13 @@ func (l *HealthCheckList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.HealthCheck{}, &HealthCheck{
+	registry.RegisterObjectType(core_mesh.HealthCheckType, &HealthCheck{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "HealthCheck",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.HealthCheck{}, &HealthCheckList{
+	registry.RegisterListType(core_mesh.HealthCheckType, &HealthCheckList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "HealthCheckList",
@@ -677,13 +678,13 @@ func (l *MeshList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.Mesh{}, &Mesh{
+	registry.RegisterObjectType(core_mesh.MeshType, &Mesh{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "Mesh",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.Mesh{}, &MeshList{
+	registry.RegisterListType(core_mesh.MeshType, &MeshList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "MeshList",
@@ -773,13 +774,13 @@ func (l *MeshGatewayList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.MeshGateway{}, &MeshGateway{
+	registry.RegisterObjectType(core_mesh.MeshGatewayType, &MeshGateway{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "MeshGateway",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.MeshGateway{}, &MeshGatewayList{
+	registry.RegisterListType(core_mesh.MeshGatewayType, &MeshGatewayList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "MeshGatewayList",
@@ -869,13 +870,13 @@ func (l *MeshGatewayRouteList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.MeshGatewayRoute{}, &MeshGatewayRoute{
+	registry.RegisterObjectType(core_mesh.MeshGatewayRouteType, &MeshGatewayRoute{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "MeshGatewayRoute",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.MeshGatewayRoute{}, &MeshGatewayRouteList{
+	registry.RegisterListType(core_mesh.MeshGatewayRouteType, &MeshGatewayRouteList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "MeshGatewayRouteList",
@@ -965,13 +966,13 @@ func (l *MeshInsightList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.MeshInsight{}, &MeshInsight{
+	registry.RegisterObjectType(core_mesh.MeshInsightType, &MeshInsight{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "MeshInsight",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.MeshInsight{}, &MeshInsightList{
+	registry.RegisterListType(core_mesh.MeshInsightType, &MeshInsightList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "MeshInsightList",
@@ -1061,13 +1062,13 @@ func (l *ProxyTemplateList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.ProxyTemplate{}, &ProxyTemplate{
+	registry.RegisterObjectType(core_mesh.ProxyTemplateType, &ProxyTemplate{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ProxyTemplate",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.ProxyTemplate{}, &ProxyTemplateList{
+	registry.RegisterListType(core_mesh.ProxyTemplateType, &ProxyTemplateList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ProxyTemplateList",
@@ -1157,13 +1158,13 @@ func (l *RateLimitList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.RateLimit{}, &RateLimit{
+	registry.RegisterObjectType(core_mesh.RateLimitType, &RateLimit{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "RateLimit",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.RateLimit{}, &RateLimitList{
+	registry.RegisterListType(core_mesh.RateLimitType, &RateLimitList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "RateLimitList",
@@ -1253,13 +1254,13 @@ func (l *RetryList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.Retry{}, &Retry{
+	registry.RegisterObjectType(core_mesh.RetryType, &Retry{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "Retry",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.Retry{}, &RetryList{
+	registry.RegisterListType(core_mesh.RetryType, &RetryList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "RetryList",
@@ -1349,13 +1350,13 @@ func (l *ServiceInsightList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.ServiceInsight{}, &ServiceInsight{
+	registry.RegisterObjectType(core_mesh.ServiceInsightType, &ServiceInsight{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ServiceInsight",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.ServiceInsight{}, &ServiceInsightList{
+	registry.RegisterListType(core_mesh.ServiceInsightType, &ServiceInsightList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ServiceInsightList",
@@ -1445,13 +1446,13 @@ func (l *TimeoutList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.Timeout{}, &Timeout{
+	registry.RegisterObjectType(core_mesh.TimeoutType, &Timeout{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "Timeout",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.Timeout{}, &TimeoutList{
+	registry.RegisterListType(core_mesh.TimeoutType, &TimeoutList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TimeoutList",
@@ -1541,13 +1542,13 @@ func (l *TrafficLogList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.TrafficLog{}, &TrafficLog{
+	registry.RegisterObjectType(core_mesh.TrafficLogType, &TrafficLog{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TrafficLog",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.TrafficLog{}, &TrafficLogList{
+	registry.RegisterListType(core_mesh.TrafficLogType, &TrafficLogList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TrafficLogList",
@@ -1637,13 +1638,13 @@ func (l *TrafficPermissionList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.TrafficPermission{}, &TrafficPermission{
+	registry.RegisterObjectType(core_mesh.TrafficPermissionType, &TrafficPermission{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TrafficPermission",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.TrafficPermission{}, &TrafficPermissionList{
+	registry.RegisterListType(core_mesh.TrafficPermissionType, &TrafficPermissionList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TrafficPermissionList",
@@ -1733,13 +1734,13 @@ func (l *TrafficRouteList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.TrafficRoute{}, &TrafficRoute{
+	registry.RegisterObjectType(core_mesh.TrafficRouteType, &TrafficRoute{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TrafficRoute",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.TrafficRoute{}, &TrafficRouteList{
+	registry.RegisterListType(core_mesh.TrafficRouteType, &TrafficRouteList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TrafficRouteList",
@@ -1829,13 +1830,13 @@ func (l *TrafficTraceList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.TrafficTrace{}, &TrafficTrace{
+	registry.RegisterObjectType(core_mesh.TrafficTraceType, &TrafficTrace{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TrafficTrace",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.TrafficTrace{}, &TrafficTraceList{
+	registry.RegisterListType(core_mesh.TrafficTraceType, &TrafficTraceList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "TrafficTraceList",
@@ -1925,13 +1926,13 @@ func (l *VirtualOutboundList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.VirtualOutbound{}, &VirtualOutbound{
+	registry.RegisterObjectType(core_mesh.VirtualOutboundType, &VirtualOutbound{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "VirtualOutbound",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.VirtualOutbound{}, &VirtualOutboundList{
+	registry.RegisterListType(core_mesh.VirtualOutboundType, &VirtualOutboundList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "VirtualOutboundList",
@@ -2021,13 +2022,13 @@ func (l *ZoneEgressList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.ZoneEgress{}, &ZoneEgress{
+	registry.RegisterObjectType(core_mesh.ZoneEgressType, &ZoneEgress{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneEgress",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.ZoneEgress{}, &ZoneEgressList{
+	registry.RegisterListType(core_mesh.ZoneEgressType, &ZoneEgressList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneEgressList",
@@ -2117,13 +2118,13 @@ func (l *ZoneEgressInsightList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.ZoneEgressInsight{}, &ZoneEgressInsight{
+	registry.RegisterObjectType(core_mesh.ZoneEgressInsightType, &ZoneEgressInsight{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneEgressInsight",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.ZoneEgressInsight{}, &ZoneEgressInsightList{
+	registry.RegisterListType(core_mesh.ZoneEgressInsightType, &ZoneEgressInsightList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneEgressInsightList",
@@ -2213,13 +2214,13 @@ func (l *ZoneIngressList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.ZoneIngress{}, &ZoneIngress{
+	registry.RegisterObjectType(core_mesh.ZoneIngressType, &ZoneIngress{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneIngress",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.ZoneIngress{}, &ZoneIngressList{
+	registry.RegisterListType(core_mesh.ZoneIngressType, &ZoneIngressList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneIngressList",
@@ -2309,13 +2310,13 @@ func (l *ZoneIngressInsightList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&mesh_proto.ZoneIngressInsight{}, &ZoneIngressInsight{
+	registry.RegisterObjectType(core_mesh.ZoneIngressInsightType, &ZoneIngressInsight{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneIngressInsight",
 		},
 	})
-	registry.RegisterListType(&mesh_proto.ZoneIngressInsight{}, &ZoneIngressInsightList{
+	registry.RegisterListType(core_mesh.ZoneIngressInsightType, &ZoneIngressInsightList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneIngressInsightList",

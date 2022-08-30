@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	system_proto "github.com/kumahq/kuma/api/system/v1alpha1"
+	core_system "github.com/kumahq/kuma/pkg/core/resources/apis/system"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/model"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
 	util_proto "github.com/kumahq/kuma/pkg/util/proto"
@@ -99,13 +100,13 @@ func (l *ZoneList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&system_proto.Zone{}, &Zone{
+	registry.RegisterObjectType(core_system.ZoneType, &Zone{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "Zone",
 		},
 	})
-	registry.RegisterListType(&system_proto.Zone{}, &ZoneList{
+	registry.RegisterListType(core_system.ZoneType, &ZoneList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneList",
@@ -195,13 +196,13 @@ func (l *ZoneInsightList) GetItems() []model.KubernetesObject {
 }
 
 func init() {
-	registry.RegisterObjectType(&system_proto.ZoneInsight{}, &ZoneInsight{
+	registry.RegisterObjectType(core_system.ZoneInsightType, &ZoneInsight{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneInsight",
 		},
 	})
-	registry.RegisterListType(&system_proto.ZoneInsight{}, &ZoneInsightList{
+	registry.RegisterListType(core_system.ZoneInsightType, &ZoneInsightList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "ZoneInsightList",

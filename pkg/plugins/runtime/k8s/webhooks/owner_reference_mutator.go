@@ -38,7 +38,7 @@ func (m *OwnerReferenceMutator) Handle(ctx context.Context, req admission.Reques
 	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
-	obj, err := m.K8sRegistry.NewObject(coreRes.GetSpec())
+	obj, err := m.K8sRegistry.NewObject(resType)
 	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}

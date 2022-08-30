@@ -257,9 +257,9 @@ type SimpleKubeFactory struct {
 }
 
 func (f *SimpleKubeFactory) NewObject(r core_model.Resource) (k8s_model.KubernetesObject, error) {
-	return f.KubeTypes.NewObject(r.GetSpec())
+	return f.KubeTypes.NewObject(r.Descriptor().Name)
 }
 
 func (f *SimpleKubeFactory) NewList(rl core_model.ResourceList) (k8s_model.KubernetesList, error) {
-	return f.KubeTypes.NewList(rl.NewItem().GetSpec())
+	return f.KubeTypes.NewList(rl.GetItemType())
 }

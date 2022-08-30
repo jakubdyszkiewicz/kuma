@@ -11,12 +11,12 @@ import (
 	kube_types "k8s.io/apimachinery/pkg/types"
 	kube_admission "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 	k8s_common "github.com/kumahq/kuma/pkg/plugins/common/k8s"
 	mesh_k8s "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/api/v1alpha1"
 	k8s_registry "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
 	sample_k8s "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/test/api/sample/v1alpha1"
-	sample_proto "github.com/kumahq/kuma/pkg/test/apis/sample/v1alpha1"
+	"github.com/kumahq/kuma/pkg/test/resources/apis/sample"
 )
 
 type denyingValidator struct {
@@ -49,7 +49,7 @@ var _ = Describe("Composite Validator", func() {
 		handler = composite.WebHook()
 
 		kubeTypes = k8s_registry.NewTypeRegistry()
-		err := kubeTypes.RegisterObjectType(&sample_proto.TrafficRoute{}, &sample_k8s.SampleTrafficRoute{
+		err := kubeTypes.RegisterObjectType(sample.TrafficRouteType, &sample_k8s.SampleTrafficRoute{
 			TypeMeta: kube_meta.TypeMeta{
 				APIVersion: sample_k8s.GroupVersion.String(),
 				Kind:       "SampleTrafficRoute",
@@ -57,7 +57,7 @@ var _ = Describe("Composite Validator", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		err = kubeTypes.RegisterObjectType(&mesh_proto.Mesh{}, &mesh_k8s.Mesh{})
+		err = kubeTypes.RegisterObjectType(mesh.MeshType, &mesh_k8s.Mesh{})
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -78,7 +78,7 @@ var _ = Describe("Composite Validator", func() {
 			  }
 			}
 			`
-		obj, err := kubeTypes.NewObject(&sample_proto.TrafficRoute{})
+		obj, err := kubeTypes.NewObject(sample.TrafficRouteType)
 		Expect(err).ToNot(HaveOccurred())
 
 		req := kube_admission.Request{
@@ -116,7 +116,7 @@ var _ = Describe("Composite Validator", func() {
 			  }
 			}
 			`
-		obj, err := kubeTypes.NewObject(&mesh_proto.Mesh{})
+		obj, err := kubeTypes.NewObject(mesh.MeshType)
 		Expect(err).ToNot(HaveOccurred())
 
 		req := kube_admission.Request{

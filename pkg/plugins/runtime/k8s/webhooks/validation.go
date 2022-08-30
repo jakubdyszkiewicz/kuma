@@ -91,11 +91,12 @@ func (h *validatingHandler) Handle(ctx context.Context, req admission.Request) a
 }
 
 func (h *validatingHandler) decode(req admission.Request) (core_model.Resource, k8s_model.KubernetesObject, error) {
-	coreRes, err := h.coreRegistry.NewObject(core_model.ResourceType(req.Kind.Kind))
+	resType := core_model.ResourceType(req.Kind.Kind)
+	coreRes, err := h.coreRegistry.NewObject(resType)
 	if err != nil {
 		return nil, nil, err
 	}
-	k8sObj, err := h.k8sRegistry.NewObject(coreRes.GetSpec())
+	k8sObj, err := h.k8sRegistry.NewObject(resType)
 	if err != nil {
 		return nil, nil, err
 	}
