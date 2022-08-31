@@ -19,7 +19,7 @@ import (
 	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/core/resources/registry"
 	"github.com/kumahq/kuma/pkg/core/xds"
-	v1alpha12 "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/api/v1alpha1"
+	"github.com/kumahq/kuma/pkg/plugins/resources/k8s"
 	registry2 "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
 	test_model "github.com/kumahq/kuma/pkg/test/resources/model"
 	"github.com/kumahq/kuma/pkg/xds/envoy"
@@ -34,6 +34,35 @@ var handshakeConfig = plugin.HandshakeConfig{
 
 var pluginMap = map[string]plugin.Plugin{
 	"xdsHook": &XDSHookPlugin{},
+}
+
+func registerExtensionResource(desc core_model.ResourceTypeDescriptor) error {
+	desc.Resource = core_model.NewExtensionResource(desc.Name)
+	desc.ResourceList = &core_model.ExtensionResourceList{
+		Type: desc.Name,
+		Desc: desc,
+	}
+	// uni
+	if err := registry.Global().RegisterType(desc); err != nil {
+		return err
+	}
+	// kubernetes
+	err := registry2.Global().RegisterObjectType(desc.Name, &k8s.ExtensionResource{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: schema.GroupVersion{Group: "kuma.io", Version: "v1alpha1"}.String(),
+			Kind:       string(desc.Name),
+		},
+	})
+	if err != nil {
+		return err
+	}
+	registry2.RegisterListType(desc.Name, &k8s.ExtensionResourceList{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: schema.GroupVersion{Group: "kuma.io", Version: "v1alpha1"}.String(),
+			Kind:       string(desc.Name) + "List",
+		},
+	})
+	return nil
 }
 
 func Setup() error {
@@ -54,31 +83,12 @@ func Setup() error {
 		PluralDisplayName:   "OIDCs",
 		IsExperimental:      false,
 	}
-	desc3.Resource = NewExtensionResource(desc3.Name)
-	desc3.ResourceList = &ExtensionResourceList{
+	desc3.Resource = core_model.NewExtensionResource(desc3.Name)
+	desc3.ResourceList = &core_model.ExtensionResourceList{
 		Type: desc3.Name,
 		Desc: desc3,
 	}
-	if err := registry.Global().RegisterType(desc3); err != nil {
-		return err
-	}
-
-	err := registry2.Global().RegisterObjectType(desc3.Name, &ExtensionResourceK8s{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: schema.GroupVersion{Group: "kuma.io", Version: "v1alpha1"}.String(),
-			Kind:       "Oidc",
-		},
-	})
-	if err != nil {
-		return err
-	}
-	registry2.RegisterListType(desc3.Name, &ExtensionResourceK8sList{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: schema.GroupVersion{Group: "kuma.io", Version: "v1alpha1"}.String(),
-			Kind:       "OidcList",
-		},
-	})
-	v1alpha12.SchemeBuilder.Register(&ExtensionResourceK8s{}, &ExtensionResourceK8sList{})
+	//v1alpha12.SchemeBuilder.Register(&ExtensionResourceK8s{}, &ExtensionResourceK8sList{})
 
 	//if err := registry2.Global().RegisterObjectType(desc3.Name, &ExtensionResourceK8s{}); err != nil {
 	//	return err

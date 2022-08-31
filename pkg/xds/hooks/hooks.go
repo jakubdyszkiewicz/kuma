@@ -1,7 +1,8 @@
 package hooks
 
 type Hooks struct {
-	resourceSetHooks []ResourceSetHook
+	resourceSetHooks  []ResourceSetHook
+	modificationHooks []ModificationsHook
 }
 
 func (h *Hooks) AddResourceSetHook(hook ResourceSetHook) {
@@ -10,4 +11,12 @@ func (h *Hooks) AddResourceSetHook(hook ResourceSetHook) {
 
 func (h *Hooks) ResourceSetHooks() []ResourceSetHook {
 	return h.resourceSetHooks
+}
+
+func (h *Hooks) AddModificationHook(hook ModificationsHook) {
+	h.modificationHooks = append(h.modificationHooks, hook)
+}
+
+func (h *Hooks) ModificationHooks() []ModificationsHook {
+	return h.modificationHooks
 }

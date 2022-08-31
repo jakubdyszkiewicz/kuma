@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	kube_client "sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/kumahq/kuma/pkg/benchmark"
 	"github.com/kumahq/kuma/pkg/core"
 	"github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/core/resources/store"
@@ -52,7 +51,6 @@ func (e *ExtensionResourceStore) Get(ctx context.Context, r model.Resource, fs .
 		return err
 	}
 
-	core.Log.Info("I AM USING ExtensionResourceStore")
 	uObj := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "kuma.io/v1alpha1",
@@ -67,31 +65,12 @@ func (e *ExtensionResourceStore) Get(ctx context.Context, r model.Resource, fs .
 		return errors.Wrap(err, "failed to get k8s resource")
 	}
 
-	metadataMap := uObj.Object["metadata"].(map[string]interface{})
-	delete(metadataMap, "managedFields")
-	metaBytes, err := json.Marshal(metadataMap)
-	if err != nil {
-		return err
-	}
-	core.Log.Info("metabytes", "meta", string(metaBytes))
-	meta := v1.ObjectMeta{}
-	if err := json.Unmarshal(metaBytes, &metaBytes); err != nil {
-		return errors.Wrap(err, "could not unmarshhal meta")
-	}
-
-	specBytes, err := json.Marshal(uObj.Object["spec"])
+	er, err := unstructuredToExtensionResourceK8s(uObj)
 	if err != nil {
 		return err
 	}
 
-	er := obj.(*benchmark.ExtensionResourceK8s)
-	er.ObjectMeta = meta
-	er.Mesh = uObj.Object["mesh"].(string)
-	er.Spec = &apiextensionsv1.JSON{
-		Raw: specBytes,
-	}
-
-	if err := e.Converter.ToCoreResource(obj, r); err != nil {
+	if err := e.Converter.ToCoreResource(er, r); err != nil {
 		return errors.Wrap(err, "failed to convert k8s model into core counterpart")
 	}
 	if opts.Version != "" && r.GetMeta().GetVersion() != opts.Version {
@@ -104,8 +83,66 @@ func (e *ExtensionResourceStore) Get(ctx context.Context, r model.Resource, fs .
 	return nil
 }
 
-func (e *ExtensionResourceStore) List(ctx context.Context, list model.ResourceList, optionsFunc ...store.ListOptionsFunc) error {
-	return nil // todo panic
+func unstructuredToExtensionResourceK8s(u *unstructured.Unstructured) (*ExtensionResource, error) {
+	metadataMap := u.Object["metadata"].(map[string]interface{})
+	metaBytes, err := json.Marshal(metadataMap)
+	if err != nil {
+		return nil, err
+	}
+	core.Log.Info("metabytes", "meta", string(metaBytes))
+	meta := v1.ObjectMeta{}
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		return nil, errors.Wrap(err, "could not unmarshhal meta")
+	}
+
+	specBytes, err := json.Marshal(u.Object["spec"])
+	if err != nil {
+		return nil, err
+	}
+
+	er := &ExtensionResource{}
+	er.ObjectMeta = meta
+	er.Mesh = u.Object["mesh"].(string)
+	er.Spec = &apiextensionsv1.JSON{
+		Raw: specBytes,
+	}
+	return er, nil
+}
+
+func (e *ExtensionResourceStore) List(ctx context.Context, rs model.ResourceList, fs ...store.ListOptionsFunc) error {
+	opts := store.NewListOptions(fs...)
+
+	uList := unstructured.UnstructuredList{
+		Object: map[string]interface{}{
+			"apiVersion": "kuma.io/v1alpha1",
+			"kind":       string(rs.GetItemType()) + "List",
+		},
+	}
+	if err := e.Client.List(ctx, &uList); err != nil {
+		return errors.Wrap(err, "failed to list k8s resources")
+	}
+
+	for _, item := range uList.Items {
+		er, err := unstructuredToExtensionResourceK8s(&item)
+		if err != nil {
+			return err
+		}
+
+		if opts.Mesh != "" && opts.Mesh != er.Mesh {
+			continue
+		}
+
+		coreItem := rs.NewItem()
+		if err := e.Converter.ToCoreResource(er, coreItem); err != nil {
+			return errors.Wrap(err, "failed to convert k8s model into core counterpart")
+		}
+
+		if err := rs.AddItem(coreItem); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 var _ store.ResourceStore = &ExtensionResourceStore{}
