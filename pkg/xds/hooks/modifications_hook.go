@@ -21,7 +21,7 @@ type Policy struct {
 type XDSHookData struct {
 	Resources []XDSResource
 	Policies  []Policy
-	// Dataplane
+	Dataplane Policy
 	// Mesh
 }
 
@@ -46,6 +46,6 @@ type Filters struct {
 }
 
 type ModificationsHook interface {
-	Filters() Filters
+	Filters() (Filters, error)
 	Modifications(XDSHookData) (XDSHookModifications, error)
 }

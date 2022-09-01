@@ -4,11 +4,13 @@ import (
 	"context"
 
 	envoy_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	envoy_listener_v3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	envoy_types "github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	envoy_cache "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoy_resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	protov1 "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/kumahq/kuma/pkg/core"
 	model "github.com/kumahq/kuma/pkg/core/xds"
@@ -160,6 +162,7 @@ type snapshotGenerator interface {
 type templateSnapshotGenerator struct {
 	ProxyTemplateResolver xds_template.ProxyTemplateResolver
 	ResourceSetHooks      []xds_hooks.ResourceSetHook
+	ModificationsHooks    []xds_hooks.ModificationsHook
 }
 
 func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, proxy *model.Proxy) (envoy_cache.Snapshot, error) {
@@ -172,9 +175,78 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 		reconcileLog.Error(err, "failed to generate a snapshot", "proxy", proxy, "template", template)
 		return envoy_cache.Snapshot{}, err
 	}
+
+	// <---
+
 	for _, hook := range s.ResourceSetHooks {
 		if err := hook.Modify(rs, ctx, proxy); err != nil {
 			return envoy_cache.Snapshot{}, errors.Wrapf(err, "could not apply hook %T", hook)
+		}
+	}
+
+	for _, hook := range s.ModificationsHooks {
+		data := xds_hooks.XDSHookData{}
+		for _, res := range rs.List() {
+			if _, ok := res.Resource.(*envoy_listener_v3.Listener); !ok {
+				continue
+			}
+
+			core.Log.Info("passing listener", "listener", res.Resource)
+			resBytes, err := proto.Marshal(protov1.MessageV2(res.Resource))
+			if err != nil {
+				return envoy_cache.Snapshot{}, err
+			}
+			data.Resources = append(data.Resources, xds_hooks.XDSResource{
+				ID: xds_hooks.XDSResourceID{
+					Name: res.Name,
+					Type: string(protov1.MessageV2(res.Resource).ProtoReflect().Descriptor().FullName()),
+				},
+				Origin:   res.Origin,
+				Resource: resBytes,
+			})
+		}
+
+		resBytes, err := proto.Marshal(proxy.Dataplane.Spec)
+		if err != nil {
+			return envoy_cache.Snapshot{}, err
+		}
+		data.Dataplane = xds_hooks.Policy{
+			Name: proxy.Dataplane.Meta.GetName(),
+			Mesh: proxy.Dataplane.Meta.GetMesh(),
+			Type: string(proxy.Dataplane.Descriptor().Name),
+			Spec: resBytes,
+		}
+
+		for _, res := range ctx.Mesh.Resources.ListOrEmpty("Tap").GetItems() {
+			resBytes, err := proto.Marshal(res.GetSpec())
+			if err != nil {
+				return envoy_cache.Snapshot{}, err
+			}
+			data.Policies = append(data.Policies, xds_hooks.Policy{
+				Name: res.GetMeta().GetName(),
+				Mesh: res.GetMeta().GetMesh(),
+				Type: string(res.Descriptor().Name),
+				Spec: resBytes,
+			})
+		}
+
+		// policies
+		mods, err := hook.Modifications(data)
+		if err != nil {
+			return envoy_cache.Snapshot{}, errors.Wrap(err, "error from plugin")
+		}
+		for _, res := range mods.Update {
+			// todo all types
+			l := envoy_listener_v3.Listener{}
+			if err := proto.Unmarshal(res.Resource, &l); err != nil {
+				return envoy_cache.Snapshot{}, err
+			}
+			core.Log.Info("oh, got an update!", "listener", l)
+			rs.Add(&model.Resource{
+				Name:     res.ID.Name,
+				Origin:   res.Origin,
+				Resource: &l,
+			})
 		}
 	}
 	if err := modifications.Apply(rs, template.GetConf().GetModifications(), proxy.APIVersion); err != nil {

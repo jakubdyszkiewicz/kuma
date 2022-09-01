@@ -142,6 +142,8 @@ func (e *ExtensionResourceStore) List(ctx context.Context, rs model.ResourceList
 		}
 	}
 
+	rs.GetPagination().SetTotal(uint32(len(uList.Items)))
+
 	return nil
 }
 

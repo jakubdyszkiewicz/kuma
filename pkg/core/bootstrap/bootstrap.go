@@ -45,6 +45,7 @@ import (
 	"github.com/kumahq/kuma/pkg/metrics"
 	metrics_store "github.com/kumahq/kuma/pkg/metrics/store"
 	k8s_extensions "github.com/kumahq/kuma/pkg/plugins/extensions/k8s"
+	"github.com/kumahq/kuma/pkg/plugins/externalpolicy"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s"
 	tokens_access "github.com/kumahq/kuma/pkg/tokens/builtin/access"
 	zone_access "github.com/kumahq/kuma/pkg/tokens/builtin/zone/access"
@@ -62,6 +63,31 @@ func buildRuntime(appCtx context.Context, cfg kuma_cp.Config) (core_runtime.Runt
 	if err != nil {
 		return nil, err
 	}
+
+	builder.WithXDSHooks(&xds_hooks.Hooks{})
+	//policiesPaths := []string{"/Users/jakub/kong/tap-kuma-plugin/plugin"}
+	var externalPoliciesDescriptors []core_model.ResourceTypeDescriptor
+	for _, path := range cfg.Experimental.ExternalPolicyPluginPaths {
+		plugin, err := externalpolicy.NewExternalPolicyPlugin(path)
+		if err != nil {
+			return nil, err
+		}
+		desc, err := plugin.Descriptor()
+		if err != nil {
+			return nil, err
+		}
+		externalPoliciesDescriptors = append(externalPoliciesDescriptors, desc)
+		if err := externalpolicy.RegisterExtensionResource(desc); err != nil {
+			return nil, err
+		}
+		if cfg.Environment == config_core.KubernetesEnvironment {
+			if err := externalpolicy.RegisterKubernetesExtensionResource(desc); err != nil {
+				return nil, err
+			}
+		}
+		builder.XDSHooks().AddModificationHook(plugin)
+	}
+
 	if err := initializeMetrics(builder); err != nil {
 		return nil, err
 	}
@@ -78,28 +104,33 @@ func buildRuntime(appCtx context.Context, cfg kuma_cp.Config) (core_runtime.Runt
 		return nil, err
 	}
 
-	mgr, ok := k8s_extensions.FromManagerContext(builder.Extensions())
-	if !ok {
-		return nil, errors.Errorf("k8s controller runtime Manager hasn't been configured")
-	}
-	converter, ok := k8s_extensions.FromResourceConverterContext(builder.Extensions())
-	if !ok {
-		return nil, errors.Errorf("k8s resource converter hasn't been configured")
-	}
-
-	st := &k8s.ExtensionResourceStore{
-		Client:    mgr.GetClient(),
-		Converter: converter,
-	}
-
 	// we add Secret store to unified ResourceStore so global<->zone synchronizer can use unified interface
-	builder.WithResourceStore(core_store.NewCustomizableResourceStore(builder.ResourceStore(), map[core_model.ResourceType]core_store.ResourceStore{
+	customStores := map[core_model.ResourceType]core_store.ResourceStore{
 		system.SecretType:       builder.SecretStore(),
 		system.GlobalSecretType: builder.SecretStore(),
 		system.ConfigType:       builder.ConfigStore(),
-		"oidc":                  st,
-	}))
+	}
 
+	for _, desc := range externalPoliciesDescriptors {
+		if cfg.Environment == config_core.KubernetesEnvironment {
+			mgr, ok := k8s_extensions.FromManagerContext(builder.Extensions())
+			if !ok {
+				return nil, errors.Errorf("k8s controller runtime Manager hasn't been configured")
+			}
+			converter, ok := k8s_extensions.FromResourceConverterContext(builder.Extensions())
+			if !ok {
+				return nil, errors.Errorf("k8s resource converter hasn't been configured")
+			}
+
+			st := &k8s.ExtensionResourceStore{
+				Client:    mgr.GetClient(),
+				Converter: converter,
+			}
+			customStores[desc.Name] = st
+		}
+	}
+
+	builder.WithResourceStore(core_store.NewCustomizableResourceStore(builder.ResourceStore(), customStores))
 	initializeConfigManager(builder)
 
 	builder.WithResourceValidators(core_runtime.ResourceValidators{
@@ -122,7 +153,6 @@ func buildRuntime(appCtx context.Context, cfg kuma_cp.Config) (core_runtime.Runt
 
 	builder.WithLookupIP(lookup.CachedLookupIP(net.LookupIP, cfg.General.DNSCacheTTL))
 	builder.WithAPIManager(customization.NewAPIList())
-	builder.WithXDSHooks(&xds_hooks.Hooks{})
 	caProvider, err := secrets.NewCaProvider(builder.CaManagers(), builder.Metrics())
 	if err != nil {
 		return nil, err

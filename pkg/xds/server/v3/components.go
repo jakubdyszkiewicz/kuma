@@ -89,6 +89,7 @@ func DefaultReconciler(
 	return &reconciler{
 		generator: &templateSnapshotGenerator{
 			ResourceSetHooks:      rt.XDSHooks().ResourceSetHooks(),
+			ModificationsHooks:    rt.XDSHooks().ModificationHooks(),
 			ProxyTemplateResolver: resolver,
 		},
 		cacher:         &simpleSnapshotCacher{xdsContext.Hasher(), xdsContext.Cache()},

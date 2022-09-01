@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	api_server "github.com/kumahq/kuma/pkg/api-server"
-	"github.com/kumahq/kuma/pkg/benchmark"
 	"github.com/kumahq/kuma/pkg/clusterid"
 	kuma_cmd "github.com/kumahq/kuma/pkg/cmd"
 	"github.com/kumahq/kuma/pkg/config"
@@ -51,10 +50,6 @@ func newRunCmdWithOpts(opts kuma_cmd.RunCmdOpts) *cobra.Command {
 			err := config.Load(args.configPath, &cfg)
 			if err != nil {
 				runLog.Error(err, "could not load the configuration")
-				return err
-			}
-			if err := benchmark.Setup(); err != nil {
-				runLog.Error(err, "unable to set up benchmark")
 				return err
 			}
 

@@ -1,6 +1,8 @@
 *
 !build/artifacts-linux-amd64/kuma-cp/kuma-cp
 !build/artifacts-linux-arm64/kuma-cp/kuma-cp
+!build/plugin-linux-amd64
+!build/plugin-linux-arm64
 !pkg/config/app/kuma-cp/kuma-cp.defaults.yaml
 !tools/releases/templates/LICENSE
 !tools/releases/templates/NOTICE

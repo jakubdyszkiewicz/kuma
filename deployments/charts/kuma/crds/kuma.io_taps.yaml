@@ -5,16 +5,16 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.9.2
   creationTimestamp: null
-  name: oidcs.kuma.io
+  name: taps.kuma.io
 spec:
   group: kuma.io
   names:
     categories:
     - kuma
-    kind: Oidc
-    listKind: OidcList
-    plural: oidcs
-    singular: oidc
+    kind: Tap
+    listKind: TapList
+    plural: taps
+    singular: tap
   scope: Cluster
   versions:
   - name: v1alpha1
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: Spec is the specification of the Kuma Oidc resource.
+            description: Spec is the specification of the Kuma Tap resource.
             x-kubernetes-preserve-unknown-fields: true
         type: object
     served: true

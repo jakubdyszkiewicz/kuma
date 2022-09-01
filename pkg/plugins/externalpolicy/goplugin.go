@@ -6,35 +6,63 @@ import (
 	"github.com/hashicorp/go-plugin"
 
 	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	xds_hooks "github.com/kumahq/kuma/pkg/xds/hooks"
 )
 
-type XDSHookRPC struct{ client *rpc.Client }
+type ExternalPolicyRPC struct{ client *rpc.Client }
 
-var _ XDSHook = &XDSHookRPC{}
+var _ ExternalPolicyPlugin = &ExternalPolicyRPC{}
 
-func (g *XDSHookRPC) Modifications(data XDSHookData) (XDSHookModifications, error) {
-	var resp XDSHookModifications
-	err := g.client.Call("Plugin.Modifications", data, &resp) // data: reference?
-	if err != nil {
-		return XDSHookModifications{}, err
-	}
-	return resp, nil
-}
-
-func (g *XDSHookRPC) PolicyDescriptor() (core_model.ResourceTypeDescriptor, error) {
+func (g *ExternalPolicyRPC) Descriptor() (core_model.ResourceTypeDescriptor, error) {
 	var resp core_model.ResourceTypeDescriptor
-	err := g.client.Call("Plugin.PolicyDescriptor", new(interface{}), &resp) // data: reference?
+	err := g.client.Call("Plugin.Descriptor", new(interface{}), &resp) // data: reference?
 	if err != nil {
 		return core_model.ResourceTypeDescriptor{}, err
 	}
 	return resp, nil
 }
 
-type XDSHookServer struct {
-	Impl XDSHook
+func (g *ExternalPolicyRPC) Filters() (xds_hooks.Filters, error) {
+	var resp xds_hooks.Filters
+	err := g.client.Call("Plugin.Filters", new(interface{}), &resp) // data: reference?
+	if err != nil {
+		return xds_hooks.Filters{}, nil
+	}
+	return resp, nil
 }
 
-func (s *XDSHookServer) Modifications(args XDSHookData, resp *XDSHookModifications) error {
+func (g *ExternalPolicyRPC) Modifications(data xds_hooks.XDSHookData) (xds_hooks.XDSHookModifications, error) {
+	var resp xds_hooks.XDSHookModifications
+	err := g.client.Call("Plugin.Modifications", data, &resp) // data: reference?
+	if err != nil {
+		return xds_hooks.XDSHookModifications{}, err
+	}
+	return resp, nil
+}
+
+type ExternalPolicyServer struct {
+	Impl ExternalPolicyPlugin
+}
+
+func (s *ExternalPolicyServer) Descriptor(args interface{}, resp *core_model.ResourceTypeDescriptor) error {
+	var err error
+	*resp, err = s.Impl.Descriptor()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *ExternalPolicyServer) Filters(args interface{}, resp *xds_hooks.Filters) error {
+	var err error
+	*resp, err = s.Impl.Filters()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *ExternalPolicyServer) Modifications(args xds_hooks.XDSHookData, resp *xds_hooks.XDSHookModifications) error {
 	var err error
 	*resp, err = s.Impl.Modifications(args)
 	if err != nil {
@@ -43,23 +71,14 @@ func (s *XDSHookServer) Modifications(args XDSHookData, resp *XDSHookModificatio
 	return nil
 }
 
-func (s *XDSHookServer) PolicyDescriptor(args interface{}, resp *core_model.ResourceTypeDescriptor) error {
-	var err error
-	*resp, err = s.Impl.PolicyDescriptor()
-	if err != nil {
-		return err
-	}
-	return nil
+type ExternalPolicyGoPlugin struct {
+	Impl ExternalPolicyPlugin
 }
 
-type XDSHookPlugin struct {
-	Impl XDSHook
+func (ExternalPolicyGoPlugin) Client(b *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
+	return &ExternalPolicyRPC{client: c}, nil
 }
 
-func (XDSHookPlugin) Client(b *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
-	return &XDSHookRPC{client: c}, nil
-}
-
-func (p *XDSHookPlugin) Server(*plugin.MuxBroker) (interface{}, error) {
-	return &XDSHookServer{Impl: p.Impl}, nil
+func (p *ExternalPolicyGoPlugin) Server(*plugin.MuxBroker) (interface{}, error) {
+	return &ExternalPolicyServer{Impl: p.Impl}, nil
 }
