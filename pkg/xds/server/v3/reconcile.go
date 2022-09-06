@@ -122,7 +122,16 @@ func validateResource(r envoy_types.Resource) error {
 
 func autoVersion(old envoy_cache.Snapshot, new envoy_cache.Snapshot) (envoy_cache.Snapshot, []string) {
 	for resourceType, resources := range old.Resources {
-		new.Resources[resourceType] = reuseVersion(resources, new.Resources[resourceType])
+		switch envoy_types.ResponseType(resourceType) {
+		case envoy_types.Listener:
+			new.Resources[resourceType] = reuseVersionListener(resources, new.Resources[resourceType])
+		case envoy_types.Cluster:
+			new.Resources[resourceType] = reuseVersionCluster(resources, new.Resources[resourceType])
+		case envoy_types.Endpoint:
+			new.Resources[resourceType] = reuseVersionEndpoint(resources, new.Resources[resourceType])
+		default:
+			new.Resources[resourceType] = reuseVersion(resources, new.Resources[resourceType])
+		}
 	}
 
 	var changed []string
@@ -133,6 +142,30 @@ func autoVersion(old envoy_cache.Snapshot, new envoy_cache.Snapshot) (envoy_cach
 	}
 
 	return new, changed
+}
+
+func reuseVersionCluster(old, new envoy_cache.Resources) envoy_cache.Resources {
+	new.Version = old.Version
+	if !equalSnapshots(old.Items, new.Items) {
+		new.Version = core.NewUUID()
+	}
+	return new
+}
+
+func reuseVersionListener(old, new envoy_cache.Resources) envoy_cache.Resources {
+	new.Version = old.Version
+	if !equalSnapshots(old.Items, new.Items) {
+		new.Version = core.NewUUID()
+	}
+	return new
+}
+
+func reuseVersionEndpoint(old, new envoy_cache.Resources) envoy_cache.Resources {
+	new.Version = old.Version
+	if !equalSnapshots(old.Items, new.Items) {
+		new.Version = core.NewUUID()
+	}
+	return new
 }
 
 func reuseVersion(old, new envoy_cache.Resources) envoy_cache.Resources {
@@ -176,8 +209,6 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 		return envoy_cache.Snapshot{}, err
 	}
 
-	// <---
-
 	for _, hook := range s.ResourceSetHooks {
 		if err := hook.Modify(rs, ctx, proxy); err != nil {
 			return envoy_cache.Snapshot{}, errors.Wrapf(err, "could not apply hook %T", hook)
@@ -191,7 +222,6 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 				continue
 			}
 
-			core.Log.Info("passing listener", "listener", res.Resource)
 			resBytes, err := proto.Marshal(protov1.MessageV2(res.Resource))
 			if err != nil {
 				return envoy_cache.Snapshot{}, err
@@ -241,7 +271,6 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 			if err := proto.Unmarshal(res.Resource, &l); err != nil {
 				return envoy_cache.Snapshot{}, err
 			}
-			core.Log.Info("oh, got an update!", "listener", l)
 			rs.Add(&model.Resource{
 				Name:     res.ID.Name,
 				Origin:   res.Origin,
