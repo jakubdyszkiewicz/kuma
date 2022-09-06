@@ -1,20 +1,20 @@
 #!/bin/bash
 
-curl -XPUT localhost:5681/meshes/default/taps/my-tap -H'content-type: application/json' --data '{
-   "type": "Tap",
-   "mesh": "default",
-   "name": "my-tap",
-   "selectors": [
-     {
-       "match": {
-         "kuma.io/service": "*"
-       }
-     }
-   ],
-   "conf": {
-     "id": "test_config_id"
-   }
- }'
+#curl -XPUT localhost:5681/meshes/default/taps/my-tap -H'content-type: application/json' --data '{
+#   "type": "Tap",
+#   "mesh": "default",
+#   "name": "my-tap",
+#   "selectors": [
+#     {
+#       "match": {
+#         "kuma.io/service": "*"
+#       }
+#     }
+#   ],
+#   "conf": {
+#     "id": "test_config_id"
+#   }
+# }'
 
 while true
 do

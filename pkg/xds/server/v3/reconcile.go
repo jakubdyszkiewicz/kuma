@@ -8,6 +8,7 @@ import (
 	envoy_types "github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	envoy_cache "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoy_resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	protov1 "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
@@ -227,9 +228,9 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 				continue
 			}
 
-			resBytes, err := proto.Marshal(protov1.MessageV2(res.Resource))
+			resBytes, err := proto.Marshal(res.Resource)
 			if err != nil {
-				return envoy_cache.Snapshot{}, err
+				return nil, err
 			}
 			data.Resources = append(data.Resources, xds_hooks.XDSResource{
 				ID: xds_hooks.XDSResourceID{
@@ -243,7 +244,7 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 
 		resBytes, err := proto.Marshal(proxy.Dataplane.Spec)
 		if err != nil {
-			return envoy_cache.Snapshot{}, err
+			return nil, err
 		}
 		data.Dataplane = xds_hooks.Policy{
 			Name: proxy.Dataplane.Meta.GetName(),
@@ -255,7 +256,7 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 		for _, res := range ctx.Mesh.Resources.ListOrEmpty("Tap").GetItems() {
 			resBytes, err := proto.Marshal(res.GetSpec())
 			if err != nil {
-				return envoy_cache.Snapshot{}, err
+				return nil, err
 			}
 			data.Policies = append(data.Policies, xds_hooks.Policy{
 				Name: res.GetMeta().GetName(),
@@ -268,13 +269,13 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 		// policies
 		mods, err := hook.Modifications(data)
 		if err != nil {
-			return envoy_cache.Snapshot{}, errors.Wrap(err, "error from plugin")
+			return nil, errors.Wrap(err, "error from plugin")
 		}
 		for _, res := range mods.Update {
 			// todo all types
 			l := envoy_listener_v3.Listener{}
 			if err := proto.Unmarshal(res.Resource, &l); err != nil {
-				return envoy_cache.Snapshot{}, err
+				return nil, err
 			}
 			rs.Add(&model.Resource{
 				Name:     res.ID.Name,
