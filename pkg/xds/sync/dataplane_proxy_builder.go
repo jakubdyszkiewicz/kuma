@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"net"
 
 	"github.com/pkg/errors"
@@ -11,6 +12,7 @@ import (
 	"github.com/kumahq/kuma/pkg/core/logs"
 	manager_dataplane "github.com/kumahq/kuma/pkg/core/managers/apis/dataplane"
 	"github.com/kumahq/kuma/pkg/core/permissions"
+	"github.com/kumahq/kuma/pkg/core/plugins"
 	"github.com/kumahq/kuma/pkg/core/ratelimits"
 	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
@@ -31,13 +33,13 @@ type DataplaneProxyBuilder struct {
 	APIVersion envoy.APIVersion
 }
 
-func (p *DataplaneProxyBuilder) Build(key core_model.ResourceKey, meshContext xds_context.MeshContext) (*core_xds.Proxy, error) {
+func (p *DataplaneProxyBuilder) Build(ctx context.Context, key core_model.ResourceKey, meshContext xds_context.MeshContext) (*core_xds.Proxy, error) {
 	dp, found := meshContext.DataplanesByName[key.Name]
 	if !found {
 		return nil, core_store.ErrorResourceNotFound(core_mesh.DataplaneType, key.Name, key.Mesh)
 	}
 
-	routing, destinations, err := p.resolveRouting(meshContext, dp)
+	routing, destinations, err := p.resolveRouting(ctx, meshContext, dp)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +72,11 @@ func (p *DataplaneProxyBuilder) Build(key core_model.ResourceKey, meshContext xd
 	return proxy, nil
 }
 
-func (p *DataplaneProxyBuilder) resolveRouting(meshContext xds_context.MeshContext, dataplane *core_mesh.DataplaneResource) (*core_xds.Routing, core_xds.DestinationMap, error) {
+func (p *DataplaneProxyBuilder) resolveRouting(
+	ctx context.Context,
+	meshContext xds_context.MeshContext,
+	dataplane *core_mesh.DataplaneResource,
+) (*core_xds.Routing, core_xds.DestinationMap, error) {
 	matchedExternalServices, err := permissions.MatchExternalServicesTrafficPermissions(dataplane, meshContext.Resources.ExternalServices(), meshContext.Resources.TrafficPermissions())
 	if err != nil {
 		return nil, nil, err
@@ -86,6 +92,7 @@ func (p *DataplaneProxyBuilder) resolveRouting(meshContext xds_context.MeshConte
 
 	// resolve all endpoints that match given selectors
 	outbound := xds_topology.BuildEndpointMap(
+		ctx,
 		meshContext.Resource,
 		p.Zone,
 		meshContext.Resources.Dataplanes().Items,
@@ -159,6 +166,14 @@ func (p *DataplaneProxyBuilder) matchPolicies(meshContext xds_context.MeshContex
 		RateLimitsInbound:  ratelimits.Inbound,
 		RateLimitsOutbound: ratelimits.Outbound,
 		ProxyTemplate:      template.SelectProxyTemplate(dataplane, resources.ProxyTemplates().Items),
+		Dynamic:            map[core_model.ResourceType]core_xds.TypedMatchingPolicies{},
+	}
+	for name, p := range plugins.Plugins().PolicyPlugins() {
+		res, err := p.MatchedPolicies(dataplane, resources)
+		if err != nil {
+			return nil, errors.Wrapf(err, "could not apply policy plugin %s", name)
+		}
+		matchedPolicies.Dynamic[res.Type] = res
 	}
 	return matchedPolicies, nil
 }

@@ -33,7 +33,7 @@ protoc/plugins:
 
 POLICIES_DIR := pkg/plugins/policies
 
-policies = $(foreach dir,$(shell find pkg/plugins/policies -maxdepth 1 -mindepth 1 -type d | grep -v core),$(notdir $(dir)))
+policies = $(foreach dir,$(shell find pkg/plugins/policies -maxdepth 1 -mindepth 1 -type d | grep -v core | grep -v matchers),$(notdir $(dir)))
 generate_policy_targets = $(addprefix generate/policy/,$(policies))
 cleanup_policy_targets = $(addprefix cleanup/policy/,$(policies))
 
@@ -45,7 +45,7 @@ cleanup/crds:
 
 # deletes all files in policy directory except *.proto and validator.go
 cleanup/policy/%:
-	$(shell find $(POLICIES_DIR)/$* -not -name '*.proto' -not -name 'validator.go' -type f -delete)
+	$(shell find $(POLICIES_DIR)/$* \( -name '*.pb.go' -o -name '*.yaml' -o -name 'zz_generated.*'  \) -type f -delete)
 	@rm -r $(POLICIES_DIR)/$*/k8s || true
 
 generate/policy/%: generate/schema/%
@@ -53,14 +53,14 @@ generate/policy/%: generate/schema/%
 
 generate/schema/%: generate/controller-gen/%
 	for version in $(foreach dir,$(wildcard $(POLICIES_DIR)/$*/api/*),$(notdir $(dir))); do \
-		tools/policy-gen/crd-extract-openapi.sh $* $$version ; \
+		PATH=$(CI_TOOLS_BIN_DIR):$$PATH tools/policy-gen/crd-extract-openapi.sh $* $$version ; \
 	done
 
 generate/policy-import:
 	tools/policy-gen/generate-policy-import.sh $(policies)
 
 generate/policy-helm:
-	tools/policy-gen/generate-policy-helm.sh $(policies)
+	PATH=$(CI_TOOLS_BIN_DIR):$$PATH tools/policy-gen/generate-policy-helm.sh $(policies)
 
 generate/controller-gen/%: generate/kumapolicy-gen/%
 	for version in $(foreach dir,$(wildcard $(POLICIES_DIR)/$*/api/*),$(notdir $(dir))); do \
@@ -70,13 +70,10 @@ generate/controller-gen/%: generate/kumapolicy-gen/%
 
 generate/kumapolicy-gen/%: generate/dirs/%
 	cd tools/policy-gen/protoc-gen-kumapolicy && go build && cd - ; \
-	$(PROTOC) \
+	$(PROTOC_GO) \
 		--proto_path=./api \
 		--kumapolicy_opt=endpoints-template=tools/policy-gen/templates/endpoints.yaml \
 		--kumapolicy_out=$(POLICIES_DIR)/$* \
-		--go_out=$(go_mapping):. \
-		--go_opt=paths=source_relative \
-		--go-grpc_out=$(go_mapping):. \
 		--plugin=protoc-gen-kumapolicy=tools/policy-gen/protoc-gen-kumapolicy/protoc-gen-kumapolicy \
 		$(POLICIES_DIR)/$*/api/*/*.proto ; \
 	rm tools/policy-gen/protoc-gen-kumapolicy/protoc-gen-kumapolicy ; \
@@ -100,20 +97,6 @@ crd/controller-gen:
 	$(CONTROLLER_GEN) "crd:crdVersions=v1" paths=$(IN_CRD) output:crd:artifacts:config=$(OUT_CRD)
 	$(CONTROLLER_GEN) object:headerFile=./tools/policy-gen/boilerplate.go.txt,year=$$(date +%Y) paths=$(IN_CRD)
 
-
-KUMA_GUI_GIT_URL=https://github.com/kumahq/kuma-gui.git
-KUMA_GUI_VERSION=master
-KUMA_GUI_FOLDER=app/kuma-ui/pkg/resources/data
-KUMA_GUI_WORK_FOLDER=app/kuma-ui/data/work
-
-.PHONY: upgrade/gui
-upgrade/gui:
-	rm -rf $(KUMA_GUI_WORK_FOLDER)
-	git clone --depth 1 -b $(KUMA_GUI_VERSION) $(KUMA_GUI_GIT_URL) $(KUMA_GUI_WORK_FOLDER)
-	cd $(KUMA_GUI_WORK_FOLDER) && yarn install && yarn build
-	rm -rf $(KUMA_GUI_FOLDER) && mv $(KUMA_GUI_WORK_FOLDER)/dist/ $(KUMA_GUI_FOLDER)
-	rm -rf $(KUMA_GUI_WORK_FOLDER)
-
 .PHONY: generate/envoy-imports
 generate/envoy-imports:
 	echo 'package envoy\n' > ${ENVOY_IMPORTS}
@@ -124,4 +107,7 @@ generate/envoy-imports:
 	echo ')' >> ${ENVOY_IMPORTS}
 
 .PHONY: generate/api
-generate/api: protoc/mesh protoc/mesh/v1alpha1 protoc/observability/v1 protoc/system/v1alpha1 ## Process Kuma API .proto definitions
+generate/api: protoc/common/v1alpha1 protoc/mesh protoc/mesh/v1alpha1 protoc/observability/v1 protoc/system/v1alpha1 ## Process Kuma API .proto definitions
+
+generate/test-server:
+	$(PROTOC_GO) test/server/grpc/api/*.proto

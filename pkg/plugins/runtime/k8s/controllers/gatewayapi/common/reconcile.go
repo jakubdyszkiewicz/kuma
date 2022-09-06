@@ -99,7 +99,7 @@ func ReconcileLabelledObject(
 
 	owned.SetObjectMeta(
 		&kube_meta.ObjectMeta{
-			GenerateName: fmt.Sprintf("%s-%s-", owner.Namespace, owner.Name),
+			Name: fmt.Sprintf("%s.%s", owner.Name, owner.Namespace),
 			Labels: map[string]string{
 				ownerLabel: ownerLabelValue,
 			},
