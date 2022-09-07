@@ -44,20 +44,6 @@ func BuildEndpointMap(
 	return outbound
 }
 
-func BuildExternalServicesEndpointMap(
-	ctx context.Context,
-	mesh *core_mesh.MeshResource,
-	externalServices []*core_mesh.ExternalServiceResource,
-	loader datasource.Loader,
-	zone string,
-) core_xds.EndpointMap {
-	outbound := core_xds.EndpointMap{}
-	if !mesh.ZoneEgressEnabled() {
-		fillExternalServicesOutbounds(ctx, outbound, externalServices, mesh, loader, zone)
-	}
-	return outbound
-}
-
 // BuildRemoteEndpointMap creates a map of endpoints that match given selectors
 // and are not local for the provided zone (external services and services
 // behind remote zone ingress only)

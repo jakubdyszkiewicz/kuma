@@ -289,9 +289,8 @@ type VIPDomains struct {
 }
 
 type Routing struct {
-	TrafficRoutes                  RouteMap
-	OutboundTargets                EndpointMap
-	ExternalServiceOutboundTargets EndpointMap
+	TrafficRoutes   RouteMap
+	OutboundTargets EndpointMap
 }
 
 type CaSecret struct {
