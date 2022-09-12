@@ -29,7 +29,7 @@ require (
 	github.com/hashicorp/go-plugin v1.4.5
 	github.com/hoisie/mustache v0.0.0-20160804235033-6375acf62c69
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/kumahq/kuma-net v0.5.0
+	github.com/kumahq/kuma-net v0.6.0
 	github.com/kumahq/protoc-gen-kumadoc v0.3.1
 	github.com/lib/pq v1.10.6
 	github.com/miekg/dns v1.1.50
@@ -70,7 +70,7 @@ require (
 	k8s.io/apimachinery v0.25.0
 	k8s.io/client-go v0.25.0
 	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed
-	sigs.k8s.io/controller-runtime v0.12.3
+	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/controller-tools v0.9.2
 	sigs.k8s.io/gateway-api v0.5.0
 	sigs.k8s.io/testing_frameworks v0.1.2

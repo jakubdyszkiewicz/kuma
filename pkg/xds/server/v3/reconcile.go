@@ -10,10 +10,12 @@ import (
 	envoy_resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	protov1 "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/kumahq/kuma/pkg/core"
 	"github.com/kumahq/kuma/pkg/core/plugins"
+	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 	model "github.com/kumahq/kuma/pkg/core/xds"
 	util_xds "github.com/kumahq/kuma/pkg/util/xds"
 	xds_context "github.com/kumahq/kuma/pkg/xds/context"
@@ -197,6 +199,7 @@ type templateSnapshotGenerator struct {
 	ProxyTemplateResolver xds_template.ProxyTemplateResolver
 	ResourceSetHooks      []xds_hooks.ResourceSetHook
 	ModificationsHooks    []xds_hooks.ModificationsHook
+	ExternalHookMetric    prometheus.Summary
 }
 
 func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, proxy *model.Proxy) (*envoy_cache.Snapshot, error) {
@@ -222,67 +225,11 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 	}
 
 	for _, hook := range s.ModificationsHooks {
-		data := xds_hooks.XDSHookData{}
-		for _, res := range rs.List() {
-			if _, ok := res.Resource.(*envoy_listener_v3.Listener); !ok {
-				continue
-			}
-
-			resBytes, err := proto.Marshal(res.Resource)
-			if err != nil {
-				return nil, err
-			}
-			data.Resources = append(data.Resources, xds_hooks.XDSResource{
-				ID: xds_hooks.XDSResourceID{
-					Name: res.Name,
-					Type: string(protov1.MessageV2(res.Resource).ProtoReflect().Descriptor().FullName()),
-				},
-				Origin:   res.Origin,
-				Resource: resBytes,
-			})
-		}
-
-		resBytes, err := proto.Marshal(proxy.Dataplane.Spec)
-		if err != nil {
+		start := core.Now()
+		if err := modifyWithHook(rs, hook, proxy.Dataplane, ctx); err != nil {
 			return nil, err
 		}
-		data.Dataplane = xds_hooks.Policy{
-			Name: proxy.Dataplane.Meta.GetName(),
-			Mesh: proxy.Dataplane.Meta.GetMesh(),
-			Type: string(proxy.Dataplane.Descriptor().Name),
-			Spec: resBytes,
-		}
-
-		for _, res := range ctx.Mesh.Resources.ListOrEmpty("Tap").GetItems() {
-			resBytes, err := proto.Marshal(res.GetSpec())
-			if err != nil {
-				return nil, err
-			}
-			data.Policies = append(data.Policies, xds_hooks.Policy{
-				Name: res.GetMeta().GetName(),
-				Mesh: res.GetMeta().GetMesh(),
-				Type: string(res.Descriptor().Name),
-				Spec: resBytes,
-			})
-		}
-
-		// policies
-		mods, err := hook.Modifications(data)
-		if err != nil {
-			return nil, errors.Wrap(err, "error from plugin")
-		}
-		for _, res := range mods.Update {
-			// todo all types
-			l := envoy_listener_v3.Listener{}
-			if err := proto.Unmarshal(res.Resource, &l); err != nil {
-				return nil, err
-			}
-			rs.Add(&model.Resource{
-				Name:     res.ID.Name,
-				Origin:   res.Origin,
-				Resource: &l,
-			})
-		}
+		s.ExternalHookMetric.Observe(float64(core.Now().Sub(start).Milliseconds()))
 	}
 	if err := modifications.Apply(rs, template.GetConf().GetModifications(), proxy.APIVersion); err != nil {
 		return nil, errors.Wrap(err, "could not apply modifications")
@@ -296,6 +243,71 @@ func (s *templateSnapshotGenerator) GenerateSnapshot(ctx xds_context.Context, pr
 	}
 
 	return envoy_cache.NewSnapshot(version, resources)
+}
+
+func modifyWithHook(rs *model.ResourceSet, hook xds_hooks.ModificationsHook, dataplane *core_mesh.DataplaneResource, ctx xds_context.Context) error {
+	data := xds_hooks.XDSHookData{}
+	for _, res := range rs.List() {
+		if _, ok := res.Resource.(*envoy_listener_v3.Listener); !ok {
+			continue
+		}
+
+		resBytes, err := proto.Marshal(res.Resource)
+		if err != nil {
+			return err
+		}
+		data.Resources = append(data.Resources, xds_hooks.XDSResource{
+			ID: xds_hooks.XDSResourceID{
+				Name: res.Name,
+				Type: string(protov1.MessageV2(res.Resource).ProtoReflect().Descriptor().FullName()),
+			},
+			Origin:   res.Origin,
+			Resource: resBytes,
+		})
+	}
+
+	resBytes, err := proto.Marshal(dataplane.Spec)
+	if err != nil {
+		return err
+	}
+	data.Dataplane = xds_hooks.Policy{
+		Name: dataplane.Meta.GetName(),
+		Mesh: dataplane.Meta.GetMesh(),
+		Type: string(dataplane.Descriptor().Name),
+		Spec: resBytes,
+	}
+
+	for _, res := range ctx.Mesh.Resources.ListOrEmpty("Tap").GetItems() {
+		resBytes, err := proto.Marshal(res.GetSpec())
+		if err != nil {
+			return err
+		}
+		data.Policies = append(data.Policies, xds_hooks.Policy{
+			Name: res.GetMeta().GetName(),
+			Mesh: res.GetMeta().GetMesh(),
+			Type: string(res.Descriptor().Name),
+			Spec: resBytes,
+		})
+	}
+
+	// policies
+	mods, err := hook.Modifications(data)
+	if err != nil {
+		return errors.Wrap(err, "error from plugin")
+	}
+	for _, res := range mods.Update {
+		// todo all types
+		l := envoy_listener_v3.Listener{}
+		if err := proto.Unmarshal(res.Resource, &l); err != nil {
+			return err
+		}
+		rs.Add(&model.Resource{
+			Name:     res.ID.Name,
+			Origin:   res.Origin,
+			Resource: &l,
+		})
+	}
+	return nil
 }
 
 type snapshotCacher interface {

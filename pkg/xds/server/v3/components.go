@@ -45,7 +45,7 @@ func RegisterXDS(
 	authCallbacks := auth.NewCallbacks(rt.ReadOnlyResourceManager(), authenticator, auth.DPNotFoundRetry{}) // no need to retry on DP Not Found because we are creating DP in DataplaneLifecycle callback
 
 	metadataTracker := xds_callbacks.NewDataplaneMetadataTracker()
-	reconciler := DefaultReconciler(rt, xdsContext, statsCallbacks)
+	reconciler := DefaultReconciler(rt, xdsContext, statsCallbacks, xdsMetrics)
 	ingressReconciler := DefaultIngressReconciler(rt, xdsContext, statsCallbacks)
 	egressReconciler := DefaultEgressReconciler(rt, xdsContext, statsCallbacks)
 	watchdogFactory, err := xds_sync.DefaultDataplaneWatchdogFactory(rt, metadataTracker, reconciler, ingressReconciler, egressReconciler, xdsMetrics, meshSnapshotCache, envoyCpCtx, envoy_common.APIV3)
@@ -74,11 +74,7 @@ func RegisterXDS(
 	return nil
 }
 
-func DefaultReconciler(
-	rt core_runtime.Runtime,
-	xdsContext XdsContext,
-	statsCallbacks util_xds.StatsCallbacks,
-) xds_sync.SnapshotReconciler {
+func DefaultReconciler(rt core_runtime.Runtime, xdsContext XdsContext, statsCallbacks util_xds.StatsCallbacks, metrics *xds_metrics.Metrics) xds_sync.SnapshotReconciler {
 	resolver := xds_template.SequentialResolver(
 		&xds_template.SimpleProxyTemplateResolver{
 			ReadOnlyResourceManager: rt.ReadOnlyResourceManager(),
@@ -91,6 +87,7 @@ func DefaultReconciler(
 			ResourceSetHooks:      rt.XDSHooks().ResourceSetHooks(),
 			ModificationsHooks:    rt.XDSHooks().ModificationHooks(),
 			ProxyTemplateResolver: resolver,
+			ExternalHookMetric:    metrics.ExternalHook,
 		},
 		cacher:         &simpleSnapshotCacher{xdsContext.Hasher(), xdsContext.Cache()},
 		statsCallbacks: statsCallbacks,

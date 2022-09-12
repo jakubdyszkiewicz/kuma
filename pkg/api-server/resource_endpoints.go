@@ -15,6 +15,7 @@ import (
 	"github.com/kumahq/kuma/pkg/core/resources/manager"
 	"github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/core/resources/model/rest"
+	rest_v1alpha1 "github.com/kumahq/kuma/pkg/core/resources/model/rest/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core/resources/store"
 	rest_errors "github.com/kumahq/kuma/pkg/core/rest/errors"
 	"github.com/kumahq/kuma/pkg/core/user"
@@ -126,22 +127,19 @@ func (r *resourceEndpoints) createOrUpdateResource(request *restful.Request, res
 	name := request.PathParameter("name")
 	meshName := r.meshFromRequest(request)
 
-	resourceRes := rest.Resource{
-		Spec: r.descriptor.NewObject().GetSpec(),
-	}
-
-	if err := request.ReadEntity(&resourceRes); err != nil {
+	resourceRest := rest.From.Resource(r.descriptor.NewObject())
+	if err := request.ReadEntity(resourceRest); err != nil {
 		rest_errors.HandleError(response, err, "Could not process a resource")
 		return
 	}
 
-	if st, ok := resourceRes.Spec.(*structpb.Struct); ok {
+	if st, ok := resourceRest.GetSpec().(*structpb.Struct); ok {
 		delete(st.Fields, "mesh")
 		delete(st.Fields, "name")
 		delete(st.Fields, "type")
 	}
 
-	if err := r.validateResourceRequest(request, &resourceRes); err != nil {
+	if err := r.validateResourceRequest(request, resourceRest.GetMeta()); err != nil {
 		rest_errors.HandleError(response, err, "Could not process a resource")
 		return
 	}
@@ -149,12 +147,12 @@ func (r *resourceEndpoints) createOrUpdateResource(request *restful.Request, res
 	resource := r.descriptor.NewObject()
 	if err := r.resManager.Get(request.Request.Context(), resource, store.GetByKey(name, meshName)); err != nil {
 		if store.IsResourceNotFound(err) {
-			r.createResource(request.Request.Context(), name, meshName, resourceRes.Spec, response)
+			r.createResource(request.Request.Context(), name, meshName, resourceRest.GetSpec(), response)
 		} else {
 			rest_errors.HandleError(response, err, "Could not find a resource")
 		}
 	} else {
-		r.updateResource(request.Request.Context(), resource, resourceRes, response)
+		r.updateResource(request.Request.Context(), resource, resourceRest.GetSpec(), response)
 	}
 }
 
@@ -178,11 +176,16 @@ func (r *resourceEndpoints) createResource(ctx context.Context, name string, mes
 	}
 }
 
-func (r *resourceEndpoints) updateResource(ctx context.Context, res model.Resource, restRes rest.Resource, response *restful.Response) {
+func (r *resourceEndpoints) updateResource(
+	ctx context.Context,
+	currentRes model.Resource,
+	newSpec model.ResourceSpec,
+	response *restful.Response,
+) {
 	if err := r.resourceAccess.ValidateUpdate(
-		model.ResourceKey{Mesh: res.GetMeta().GetMesh(), Name: res.GetMeta().GetName()},
-		res.GetSpec(),
-		restRes.Spec,
+		model.ResourceKey{Mesh: currentRes.GetMeta().GetMesh(), Name: currentRes.GetMeta().GetName()},
+		currentRes.GetSpec(),
+		newSpec,
 		r.descriptor,
 		user.FromCtx(ctx),
 	); err != nil {
@@ -190,9 +193,9 @@ func (r *resourceEndpoints) updateResource(ctx context.Context, res model.Resour
 		return
 	}
 
-	_ = res.SetSpec(restRes.Spec)
+	_ = currentRes.SetSpec(newSpec)
 
-	if err := r.resManager.Update(ctx, res); err != nil {
+	if err := r.resManager.Update(ctx, currentRes); err != nil {
 		rest_errors.HandleError(response, err, "Could not update a resource")
 	} else {
 		response.WriteHeader(200)
@@ -251,18 +254,18 @@ func (r *resourceEndpoints) deleteResourceReadOnly(request *restful.Request, res
 	}
 }
 
-func (r *resourceEndpoints) validateResourceRequest(request *restful.Request, resource *rest.Resource) error {
+func (r *resourceEndpoints) validateResourceRequest(request *restful.Request, resourceMeta rest_v1alpha1.ResourceMeta) error {
 	var err validators.ValidationError
 	name := request.PathParameter("name")
 	meshName := r.meshFromRequest(request)
 
-	if name != resource.Meta.Name {
+	if name != resourceMeta.Name {
 		err.AddViolation("name", "name from the URL has to be the same as in body")
 	}
-	if string(r.descriptor.Name) != resource.Meta.Type {
+	if string(r.descriptor.Name) != resourceMeta.Type {
 		err.AddViolation("type", "type from the URL has to be the same as in body")
 	}
-	if r.descriptor.Scope == model.ScopeMesh && meshName != resource.Meta.Mesh {
+	if r.descriptor.Scope == model.ScopeMesh && meshName != resourceMeta.Mesh {
 		err.AddViolation("mesh", "mesh from the URL has to be the same as in body")
 	}
 	err.AddError("", mesh.ValidateMeta(name, meshName, r.descriptor.Scope))
