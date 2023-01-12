@@ -15,14 +15,9 @@ func ResilienceMultizoneUniversal() {
 	var global, zone1 Cluster
 
 	BeforeEach(func() {
-		clusters, err := NewUniversalClusters(
-			[]string{Kuma1, Kuma2},
-			Silent)
-		Expect(err).ToNot(HaveOccurred())
-
 		// Global
-		global = clusters.GetCluster(Kuma1)
-		err = NewClusterSetup().
+		global = NewUniversalCluster(NewTestingT(), Kuma1, Silent)
+		err := NewClusterSetup().
 			Install(Kuma(core.Global)).
 			Setup(global)
 		Expect(err).ToNot(HaveOccurred())
@@ -30,7 +25,7 @@ func ResilienceMultizoneUniversal() {
 		globalCP := global.GetKuma()
 
 		// Cluster 1
-		zone1 = clusters.GetCluster(Kuma2)
+		zone1 = NewUniversalCluster(NewTestingT(), Kuma2, Silent)
 		err = NewClusterSetup().
 			Install(Kuma(core.Zone, WithGlobalAddress(globalCP.GetKDSServerAddress()))).
 			Setup(zone1)

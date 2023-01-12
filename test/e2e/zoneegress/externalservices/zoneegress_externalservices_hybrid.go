@@ -79,18 +79,8 @@ conf:
 	var clientPodName string
 
 	BeforeAll(func() {
-		k8sClusters, err := NewK8sClusters(
-			[]string{Kuma1},
-			Silent)
-		Expect(err).ToNot(HaveOccurred())
-
-		universalClusters, err := NewUniversalClusters(
-			[]string{Kuma4, Kuma5},
-			Silent)
-		Expect(err).ToNot(HaveOccurred())
-
 		// Global
-		global = universalClusters.GetCluster(Kuma5)
+		global = NewUniversalCluster(NewTestingT(), Kuma5, Silent)
 
 		Expect(NewClusterSetup().
 			Install(Kuma(config_core.Global)).
@@ -102,7 +92,7 @@ conf:
 		globalCP := global.GetKuma()
 
 		// K8s Cluster 1
-		zone1 = k8sClusters.GetCluster(Kuma1)
+		zone1 = NewK8sCluster(NewTestingT(), Kuma1, Silent)
 		Expect(NewClusterSetup().
 			Install(Kuma(config_core.Zone, WithGlobalAddress(globalCP.GetKDSServerAddress()))). // do not deploy Egress
 			Install(NamespaceWithSidecarInjection(TestNamespace)).
@@ -118,7 +108,7 @@ conf:
 		Expect(err).ToNot(HaveOccurred())
 
 		// Universal Cluster 4
-		zone4 = universalClusters.GetCluster(Kuma4).(*UniversalCluster)
+		zone4 = NewUniversalCluster(NewTestingT(), Kuma4, Silent)
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(NewClusterSetup().

@@ -28,16 +28,10 @@ func ZoneAndGlobalWithHelmChart() {
 	var global, zone ControlPlane
 
 	BeforeAll(func() {
-		var err error
-		clusters, err = NewK8sClusters(
-			[]string{Kuma1, Kuma2},
-			Silent)
-		Expect(err).ToNot(HaveOccurred())
-
-		c1 = clusters.GetCluster(Kuma1).
+		c1 = NewK8sCluster(NewTestingT(), Kuma1, Silent).
 			WithTimeout(6 * time.Second).
 			WithRetries(60)
-		c2 = clusters.GetCluster(Kuma2).
+		c2 = NewK8sCluster(NewTestingT(), Kuma2, Silent).
 			WithTimeout(6 * time.Second).
 			WithRetries(60)
 
@@ -46,7 +40,7 @@ func ZoneAndGlobalWithHelmChart() {
 			strings.ToLower(random.UniqueId()),
 		)
 
-		err = NewClusterSetup().
+		err := NewClusterSetup().
 			Install(Kuma(core.Global,
 				WithInstallationMode(HelmInstallationMode),
 				WithHelmReleaseName(releaseName),

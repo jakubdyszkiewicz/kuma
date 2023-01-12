@@ -42,14 +42,9 @@ networking:
 	var cluster Cluster
 
 	BeforeEach(func() {
-		clusters, err := NewUniversalClusters(
-			[]string{Kuma3},
-			Silent)
-		Expect(err).ToNot(HaveOccurred())
+		cluster = NewUniversalCluster(NewTestingT(), Kuma3, Silent)
 
-		cluster = clusters.GetCluster(Kuma3)
-
-		err = NewClusterSetup().
+		err := NewClusterSetup().
 			Install(Kuma(core.Standalone)).
 			Setup(cluster)
 		Expect(err).ToNot(HaveOccurred())

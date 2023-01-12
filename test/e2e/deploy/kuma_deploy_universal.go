@@ -32,14 +32,9 @@ routing:
 	var global, zone1, zone2 Cluster
 
 	BeforeEach(func() {
-		clusters, err := NewUniversalClusters(
-			[]string{Kuma3, Kuma4, Kuma5},
-			Silent)
-		Expect(err).ToNot(HaveOccurred())
-
 		// Global
-		global = clusters.GetCluster(Kuma5)
-		err = NewClusterSetup().
+		global = NewUniversalCluster(NewTestingT(), Kuma5, Silent)
+		err := NewClusterSetup().
 			Install(Kuma(core.Global)).
 			Install(YamlUniversal(meshMTLSOn(nonDefaultMesh, "false"))).
 			Setup(global)
@@ -52,7 +47,7 @@ routing:
 		// first 2-3 load balancer requests, it's fine but tests should be rewritten
 
 		// Cluster 1
-		zone1 = clusters.GetCluster(Kuma3)
+		zone1 = NewUniversalCluster(NewTestingT(), Kuma3, Silent)
 		err = NewClusterSetup().
 			Install(Kuma(core.Zone,
 				WithGlobalAddress(globalCP.GetKDSServerAddress()),
@@ -65,7 +60,7 @@ routing:
 		Expect(err).ToNot(HaveOccurred())
 
 		// Cluster 2
-		zone2 = clusters.GetCluster(Kuma4)
+		zone2 = NewUniversalCluster(NewTestingT(), Kuma4, Silent)
 		err = NewClusterSetup().
 			Install(Kuma(core.Zone,
 				WithGlobalAddress(globalCP.GetKDSServerAddress()),

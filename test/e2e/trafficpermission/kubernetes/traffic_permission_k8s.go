@@ -15,10 +15,7 @@ import (
 var k8sCluster Cluster
 
 var _ = E2EBeforeSuite(func() {
-	k8sClusters, err := NewK8sClusters([]string{Kuma1}, Silent)
-	Expect(err).ToNot(HaveOccurred())
-
-	k8sCluster = k8sClusters.GetCluster(Kuma1)
+	k8sCluster = NewK8sCluster(NewTestingT(), Kuma1, Silent)
 
 	Expect(Kuma(config_core.Standalone,
 		WithEnv("KUMA_EXPERIMENTAL_KUBE_OUTBOUNDS_AS_VIPS", "true"),

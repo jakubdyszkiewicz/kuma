@@ -73,16 +73,11 @@ routing:
 	var global, zone1, zone2, external Cluster
 
 	BeforeEach(func() {
-		clusters, err := NewUniversalClusters(
-			[]string{Kuma3, Kuma4, Kuma5, Kuma6},
-			Silent)
-		Expect(err).ToNot(HaveOccurred())
-
 		// External Service non-Kuma Cluster
-		external = clusters.GetCluster(Kuma3)
+		external = NewUniversalCluster(NewTestingT(), Kuma3, Silent)
 
 		// todo(lobkovilya): use test-server as an external service
-		err = NewClusterSetup().
+		err := NewClusterSetup().
 			Install(externalservice.Install(externalservice.HttpServer, externalservice.UniversalAppEchoServer)).
 			Install(externalservice.Install(externalservice.HttpsServer, externalservice.UniversalAppHttpsEchoServer)).
 			Install(externalservice.Install("es-for-kuma-4", externalservice.ExternalServiceCommand(80, "{\\\"instance\\\":\\\"kuma-4\\\"}"))).
@@ -94,7 +89,7 @@ routing:
 		Expect(externalServiceAddress).ToNot(BeEmpty())
 
 		// Global
-		global = clusters.GetCluster(Kuma6)
+		global = NewUniversalCluster(NewTestingT(), Kuma6, Silent)
 		err = NewClusterSetup().
 			Install(Kuma(core.Global)).
 			Install(YamlUniversal(fmt.Sprintf(meshDefaulMtlsOn, "false"))).
@@ -104,7 +99,7 @@ routing:
 		globalCP := global.GetKuma()
 
 		// Cluster 1
-		zone1 = clusters.GetCluster(Kuma4)
+		zone1 = NewUniversalCluster(NewTestingT(), Kuma4, Silent)
 
 		err = NewClusterSetup().
 			Install(Kuma(core.Zone,
@@ -116,7 +111,7 @@ routing:
 		Expect(err).ToNot(HaveOccurred())
 
 		// Cluster 2
-		zone2 = clusters.GetCluster(Kuma5)
+		zone2 = NewUniversalCluster(NewTestingT(), Kuma5, Silent)
 
 		err = NewClusterSetup().
 			Install(Kuma(core.Zone,

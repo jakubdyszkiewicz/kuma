@@ -13,14 +13,11 @@ func ResilienceStandaloneUniversal() {
 	var universal Cluster
 
 	BeforeEach(func() {
-		clusters, err := NewUniversalClusters([]string{Kuma1}, Silent)
-		Expect(err).ToNot(HaveOccurred())
-
-		universal = clusters.GetCluster(Kuma1)
+		universal = NewUniversalCluster(NewTestingT(), Kuma1, Silent)
 
 		Expect(postgres.Install(Kuma1)(universal)).To(Succeed())
 
-		err = NewClusterSetup().
+		err := NewClusterSetup().
 			Install(Kuma(core.Standalone,
 				WithPostgres(postgres.From(universal, Kuma1).GetEnvVars()),
 				WithEnv("KUMA_METRICS_DATAPLANE_IDLE_TIMEOUT", "10s"),

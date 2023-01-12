@@ -15,15 +15,10 @@ func ResilienceMultizoneUniversalPostgres() {
 	var global, zoneUniversal Cluster
 
 	BeforeEach(func() {
-		clusters, err := NewUniversalClusters(
-			[]string{Kuma1, Kuma2},
-			Verbose)
-		Expect(err).ToNot(HaveOccurred())
-
 		// Global
-		global = clusters.GetCluster(Kuma1)
+		global = NewUniversalCluster(NewTestingT(), Kuma1, Verbose)
 
-		err = NewClusterSetup().
+		err := NewClusterSetup().
 			Install(postgres.Install(Kuma1)).
 			Setup(global)
 		Expect(err).ToNot(HaveOccurred())
@@ -39,7 +34,7 @@ func ResilienceMultizoneUniversalPostgres() {
 		globalCP := global.GetKuma()
 
 		// Cluster 1
-		zoneUniversal = clusters.GetCluster(Kuma2)
+		zoneUniversal = NewUniversalCluster(NewTestingT(), Kuma2, Verbose)
 
 		err = NewClusterSetup().
 			Install(postgres.Install(Kuma2)).

@@ -13,15 +13,12 @@ import (
 func MultizoneUniversal() {
 	var global, zoneUniversal Cluster
 	BeforeEach(func() {
-		clusters, err := NewUniversalClusters([]string{Kuma1, Kuma2}, Silent)
-		Expect(err).ToNot(HaveOccurred())
-
 		// Global
-		global = clusters.GetCluster(Kuma1)
+		global = NewUniversalCluster(NewTestingT(), Kuma1, Silent)
 		Expect(Kuma(core.Global)(global)).To(Succeed())
 
 		// Cluster 1
-		zoneUniversal = clusters.GetCluster(Kuma2)
+		zoneUniversal = NewUniversalCluster(NewTestingT(), Kuma2, Silent)
 		Expect(Kuma(core.Zone,
 			WithGlobalAddress(global.GetKuma().GetKDSServerAddress()))(zoneUniversal),
 		).To(Succeed())

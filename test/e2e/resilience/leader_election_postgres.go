@@ -13,14 +13,10 @@ func LeaderElectionPostgres() {
 	var standalone1, standalone2 Cluster
 
 	BeforeEach(func() {
-		clusters, err := NewUniversalClusters(
-			[]string{Kuma1, Kuma2},
-			Silent)
-		Expect(err).ToNot(HaveOccurred())
-		standalone1 = clusters.GetCluster(Kuma1)
-		standalone2 = clusters.GetCluster(Kuma2)
+		standalone1 = NewUniversalCluster(NewTestingT(), Kuma1, Silent)
+		standalone2 = NewUniversalCluster(NewTestingT(), Kuma2, Silent)
 
-		err = NewClusterSetup().
+		err := NewClusterSetup().
 			Install(postgres.Install(Kuma1)).
 			Setup(standalone1)
 		Expect(err).ToNot(HaveOccurred())
