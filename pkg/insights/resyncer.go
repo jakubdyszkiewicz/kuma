@@ -222,7 +222,7 @@ func (r *resyncer) createOrUpdateServiceInsights(ctx context.Context, now time.T
 	return nil
 }
 
-func populateInsight(serviceType mesh_proto.ServiceInsight_Service_Type, insight *mesh_proto.ServiceInsight, svcName string, status core_mesh.Status, backend string, addressPort string) {
+func populateInsight(serviceType mesh_proto.ServiceInsight_Service_Type, insight *mesh_proto.ServiceInsight, svcName string, status core_mesh.Status, backend string) {
 	if _, ok := insight.Services[svcName]; !ok {
 		insight.Services[svcName] = &mesh_proto.ServiceInsight_Service{
 			IssuedBackends: map[string]uint32{},
@@ -276,11 +276,11 @@ func (r *resyncer) createOrUpdateServiceInsight(ctx context.Context, mesh string
 			case mesh_proto.Dataplane_Networking_Gateway_DELEGATED:
 				svcType = mesh_proto.ServiceInsight_Service_gateway_delegated
 			}
-			populateInsight(svcType, insight, gw.GetTags()[mesh_proto.ServiceTag], status, backend, "")
+			populateInsight(svcType, insight, gw.GetTags()[mesh_proto.ServiceTag], status, backend)
 		}
 
 		for _, inbound := range networking.GetInbound() {
-			populateInsight(mesh_proto.ServiceInsight_Service_internal, insight, inbound.GetService(), status, backend, r.addressPortGenerator(inbound.GetService()))
+			populateInsight(mesh_proto.ServiceInsight_Service_internal, insight, inbound.GetService(), status, backend)
 		}
 	}
 
@@ -289,7 +289,7 @@ func (r *resyncer) createOrUpdateServiceInsight(ctx context.Context, mesh string
 		return err
 	}
 	for _, es := range extServices.Items {
-		populateInsight(mesh_proto.ServiceInsight_Service_external, insight, es.Spec.GetService(), "", "", es.Spec.Networking.GetAddress())
+		populateInsight(mesh_proto.ServiceInsight_Service_external, insight, es.Spec.GetService(), "", "")
 	}
 
 	for _, svc := range insight.Services {
