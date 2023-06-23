@@ -228,7 +228,6 @@ func populateInsight(serviceType mesh_proto.ServiceInsight_Service_Type, insight
 			IssuedBackends: map[string]uint32{},
 			Dataplanes:     &mesh_proto.ServiceInsight_Service_DataplaneStat{},
 			ServiceType:    serviceType,
-			AddressPort:    addressPort,
 		}
 	}
 	if backend != "" {
@@ -236,8 +235,6 @@ func populateInsight(serviceType mesh_proto.ServiceInsight_Service_Type, insight
 	}
 
 	dataplanes := insight.Services[svcName].Dataplanes
-
-	dataplanes.Total++
 
 	switch status {
 	case core_mesh.Online:
@@ -296,7 +293,8 @@ func (r *resyncer) createOrUpdateServiceInsight(ctx context.Context, mesh string
 	}
 
 	for _, svc := range insight.Services {
-		online, total := svc.Dataplanes.Online, svc.Dataplanes.Total
+		online := svc.Dataplanes.Online
+		total := svc.Dataplanes.Online + svc.Dataplanes.Offline
 
 		switch {
 		case svc.ServiceType == mesh_proto.ServiceInsight_Service_external:

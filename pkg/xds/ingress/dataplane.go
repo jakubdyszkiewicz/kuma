@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -166,7 +167,13 @@ func GetIngressAvailableServices(others []*core_mesh.DataplaneResource) []*mesh_
 	tagSets := tagSets{}
 	for _, dp := range others {
 		for _, dpInbound := range dp.Spec.GetNetworking().GetHealthyInbounds() {
-			tagSets.addInstanceOfTags(dp.GetMeta().GetMesh(), dpInbound.Tags)
+			tags := map[string]string{}
+			for key, value := range dpInbound.Tags {
+				if strings.HasPrefix(key, "kuma.io/") {
+					tags[key] = value
+				}
+			}
+			tagSets.addInstanceOfTags(dp.GetMeta().GetMesh(), tags)
 		}
 	}
 	return tagSets.toAvailableServices()
