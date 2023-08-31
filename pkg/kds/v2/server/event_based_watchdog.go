@@ -6,7 +6,6 @@ import (
 
 	envoy_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/go-logr/logr"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/kumahq/kuma/pkg/core"
 	"github.com/kumahq/kuma/pkg/core/resources/model"
@@ -17,29 +16,29 @@ import (
 )
 
 type EventBasedWatchdog struct {
-	Ctx                  context.Context
-	Node                 *envoy_core.Node
-	Listener             events.Listener
-	Reconciler           reconcile.Reconciler
-	ProvidedTypes        map[model.ResourceType]struct{}
-	KdsGenerations       prometheus.Summary
-	KdsGenerationsErrors prometheus.Counter
-	Log                  logr.Logger
-	FlushInterval        time.Duration
-	FullResyncInterval   time.Duration
+	Ctx                 context.Context
+	Node                *envoy_core.Node
+	Listener            events.Listener
+	Reconciler          reconcile.Reconciler
+	ProvidedTypes       map[model.ResourceType]struct{}
+	Metrics             *Metrics
+	Log                 logr.Logger
+	NewFlushTicker      func() *time.Ticker
+	NewFullResyncTicker func() *time.Ticker
 }
 
 var _ util_watchdog.Watchdog = &EventBasedWatchdog{}
 
 func (e *EventBasedWatchdog) Start(stop <-chan struct{}) {
 	tenantID, _ := multitenant.TenantFromCtx(e.Ctx)
-	flushTicker := time.NewTicker(e.FlushInterval)
+	flushTicker := e.NewFlushTicker()
 	defer flushTicker.Stop()
-	fullResyncTicker := time.NewTicker(e.FullResyncInterval)
+	fullResyncTicker := e.NewFullResyncTicker()
 	defer fullResyncTicker.Stop()
 
 	// for the first reconcile assign all types
 	changedTypes := e.ProvidedTypes
+	reason := ReasonResync
 
 	for {
 		select {
@@ -55,16 +54,22 @@ func (e *EventBasedWatchdog) Start(stop <-chan struct{}) {
 			}
 			e.Log.V(1).Info("reconcile", "changedTypes", changedTypes)
 			start := core.Now()
-			if err := e.Reconciler.Reconcile(e.Ctx, e.Node, changedTypes); err != nil {
+			err, changed := e.Reconciler.Reconcile(e.Ctx, e.Node, changedTypes)
+			if err != nil {
 				e.Log.Error(err, "reconcile failed", "changedTypes", changedTypes)
-				e.KdsGenerationsErrors.Inc()
+				e.Metrics.KdsGenerationsErrors.Inc()
 			} else {
-				e.KdsGenerations.Observe(float64(core.Now().Sub(start).Milliseconds()))
+				result := ResultNoChanges
+				if changed {
+					result = ResultChanged
+				}
+				e.Metrics.KdsGenerations.WithLabelValues(reason, result).Observe(float64(core.Now().Sub(start).Milliseconds()))
 				changedTypes = map[model.ResourceType]struct{}{}
 			}
 		case <-fullResyncTicker.C:
 			e.Log.V(1).Info("schedule full resync")
 			changedTypes = e.ProvidedTypes
+			reason = ReasonResync
 		case event := <-e.Listener.Recv():
 			resChange, ok := event.(events.ResourceChangedEvent)
 			if !ok {
@@ -78,6 +83,7 @@ func (e *EventBasedWatchdog) Start(stop <-chan struct{}) {
 			}
 			e.Log.V(1).Info("schedule sync for type", "typ", resChange.Type)
 			changedTypes[resChange.Type] = struct{}{}
+			reason = ReasonEvent
 		}
 	}
 }

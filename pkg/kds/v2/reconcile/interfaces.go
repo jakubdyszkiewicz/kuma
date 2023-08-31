@@ -12,7 +12,7 @@ import (
 
 // Reconciler re-computes configuration for a given node.
 type Reconciler interface {
-	Reconcile(context.Context, *envoy_core.Node, map[model.ResourceType]struct{}) error
+	Reconcile(context.Context, *envoy_core.Node, map[model.ResourceType]struct{}) (error, bool)
 	Clear(context.Context, *envoy_core.Node) error
 }
 
