@@ -135,7 +135,7 @@ jobs:
           else
             target="test/e2e"
           fi
-          make ${MAKE_PARAMETERS} CI=true "${target}"
+          make ${MAKE_PARAMETERS} DEBUG=1 CI=true "${target}"
       - name: "Start ssh session"
         uses: mxschmitt/action-tmate@v3
         if: failure()
