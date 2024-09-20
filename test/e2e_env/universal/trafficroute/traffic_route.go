@@ -3,6 +3,7 @@ package trafficroute
 import (
 	"fmt"
 	"net"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -60,6 +61,7 @@ tags:
 
 	AfterEachFailure(func() {
 		DebugUniversal(universal.Cluster, meshName)
+		time.Sleep(10 * time.Hour)
 	})
 
 	E2EAfterAll(func() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	"golang.org/x/exp/maps"
 
@@ -14,6 +15,7 @@ import (
 	model "github.com/kumahq/kuma/pkg/core/xds"
 	xds_types "github.com/kumahq/kuma/pkg/core/xds/types"
 	util_maps "github.com/kumahq/kuma/pkg/util/maps"
+	"github.com/kumahq/kuma/pkg/util/proto"
 	util_protocol "github.com/kumahq/kuma/pkg/util/protocol"
 	xds_context "github.com/kumahq/kuma/pkg/xds/context"
 	envoy_common "github.com/kumahq/kuma/pkg/xds/envoy"
@@ -50,12 +52,19 @@ func (g OutboundProxyGenerator) Generate(ctx context.Context, _ *model.ResourceS
 	// If we have same split in many HTTP matches we can use the same cluster with different weight
 	clusterCache := map[string]string{}
 
+	logger := core.Log.WithValues("dpp", proxy.Id.String())
+
 	outboundsMultipleIPs := buildOutboundsWithMultipleIPs(proxy.Dataplane, outbounds, xdsCtx.Mesh.VIPDomains)
+	logger.Info("outboundsMultipleIPs", "ips", outboundsMultipleIPs)
 	for _, outbound := range outboundsMultipleIPs {
+		logger = logger.WithValues("outbound", outbound)
 		// Determine the list of destination subsets
 		// For one outbound listener it may contain many subsets (ex. TrafficRoute to many destinations)
-		routes := g.determineRoutes(proxy, outbound.Addresses[0], clusterCache, xdsCtx.Mesh.Resource.ZoneEgressEnabled())
+		routes := g.determineRoutes(proxy, outbound.Addresses[0], clusterCache, xdsCtx.Mesh.Resource.ZoneEgressEnabled(), logger)
 		clusters := routes.Clusters()
+		for _, c := range clusters {
+			logger.Info("cluster", "service", c.Service(), "name", c.Name(), "tags", c.Tags())
+		}
 
 		protocol := inferProtocol(xdsCtx.Mesh, clusters)
 
@@ -71,12 +80,14 @@ func (g OutboundProxyGenerator) Generate(ctx context.Context, _ *model.ResourceS
 			Origin:   OriginOutbound,
 			Resource: listener,
 		})
+
+		logger.Info("clusterCache", "cache", clusterCache)
 	}
 
 	services := servicesAcc.Services()
 
 	// Generate clusters. It cannot be generated on the fly with outbound loop because we need to know all subsets of the cluster for every service.
-	cdsResources, err := g.generateCDS(xdsCtx, services, proxy)
+	cdsResources, err := g.generateCDS(xdsCtx, services, proxy, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -194,10 +205,11 @@ func (OutboundProxyGenerator) generateLDS(ctx xds_context.Context, proxy *model.
 	return listener, nil
 }
 
-func (g OutboundProxyGenerator) generateCDS(ctx xds_context.Context, services envoy_common.Services, proxy *model.Proxy) (*model.ResourceSet, error) {
+func (g OutboundProxyGenerator) generateCDS(ctx xds_context.Context, services envoy_common.Services, proxy *model.Proxy, logger logr.Logger) (*model.ResourceSet, error) {
 	resources := model.NewResourceSet()
 
 	for _, serviceName := range services.Sorted() {
+		logger.Info("generateCDS", "serviceName", serviceName)
 		service := services[serviceName]
 		healthCheck := proxy.Policies.HealthChecks[serviceName]
 		circuitBreaker := proxy.Policies.CircuitBreakers[serviceName]
@@ -207,6 +219,7 @@ func (g OutboundProxyGenerator) generateCDS(ctx xds_context.Context, services en
 		for _, c := range service.Clusters() {
 			cluster := c.(*envoy_common.ClusterImpl)
 			clusterName := cluster.Name()
+			logger.Info("generateCDS", "serviceName", serviceName, "clusterName", clusterName)
 			edsClusterBuilder := envoy_clusters.NewClusterBuilder(proxy.APIVersion, clusterName).
 				Configure(envoy_clusters.Timeout(cluster.Timeout(), protocol)).
 				Configure(envoy_clusters.CircuitBreaker(circuitBreaker)).
@@ -216,6 +229,7 @@ func (g OutboundProxyGenerator) generateCDS(ctx xds_context.Context, services en
 			clusterTags := []envoy_tags.Tags{cluster.Tags()}
 
 			if service.HasExternalService() {
+				logger.Info("generateCDS HasExternalService", "serviceName", serviceName, "clusterName", clusterName)
 				if ctx.Mesh.Resource.ZoneEgressEnabled() {
 					edsClusterBuilder.
 						Configure(envoy_clusters.EdsCluster()).
@@ -243,6 +257,7 @@ func (g OutboundProxyGenerator) generateCDS(ctx xds_context.Context, services en
 				default:
 				}
 			} else {
+				logger.Info("generateCDS HasNOTExternalService", "serviceName", serviceName, "clusterName", clusterName)
 				edsClusterBuilder.
 					Configure(envoy_clusters.EdsCluster()).
 					Configure(envoy_clusters.LB(cluster.LB())).
@@ -270,6 +285,8 @@ func (g OutboundProxyGenerator) generateCDS(ctx xds_context.Context, services en
 			if err != nil {
 				return nil, errors.Wrapf(err, "build CDS for cluster %s failed", clusterName)
 			}
+			edsClusterJson, _ := proto.ToJSON(edsCluster)
+			logger.Info("generateCDS", "clusterName", clusterName, "edsCluster", string(edsClusterJson))
 
 			resources.Add(&model.Resource{
 				Name:     clusterName,
@@ -341,6 +358,7 @@ func (OutboundProxyGenerator) determineRoutes(
 	oface mesh_proto.OutboundInterface,
 	clusterCache map[string]string,
 	hasEgress bool,
+	logger logr.Logger,
 ) envoy_common.Routes {
 	var routes envoy_common.Routes
 
@@ -369,6 +387,7 @@ func (OutboundProxyGenerator) determineRoutes(
 			}
 
 			name, _ := tags.Tags(destination.Destination).DestinationClusterName(nil)
+			logger.Info("destination cluster name", "name", name)
 
 			if mesh, ok := destination.Destination[mesh_proto.MeshTag]; ok {
 				// The name should be distinct to the service & mesh combination
@@ -404,8 +423,10 @@ func (OutboundProxyGenerator) determineRoutes(
 			}
 
 			if name, ok := clusterCache[allTags.String()]; ok {
+				logger.Info("cluster cache hit", "tags", allTags.String(), "name", name)
 				cluster.SetName(name)
 			} else {
+				logger.Info("cluster cache miss", "tags", allTags.String(), "name", cluster.Name())
 				clusterCache[allTags.String()] = cluster.Name()
 			}
 
@@ -448,6 +469,10 @@ func (OutboundProxyGenerator) determineRoutes(
 
 	if defaultDestination := route.Spec.GetConf().GetSplitWithDestination(); len(defaultDestination) != 0 {
 		routes = appendRoute(routes, nil, nil, clustersFromSplit(defaultDestination))
+	}
+
+	for _, route := range routes {
+		logger.Info("route", "match", route.Match, "modify", route.Modify, "clusters", route.Clusters)
 	}
 
 	return routes

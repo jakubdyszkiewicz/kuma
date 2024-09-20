@@ -34,6 +34,7 @@ func NewRootCmd(opts kuma_cmd.RunCmdOpts, rootCtx *RootContext) *cobra.Command {
 				return err
 			}
 
+			args.outputPath = "/tmp/logs"
 			if args.outputPath != "" {
 				output, err := filepath.Abs(args.outputPath)
 				if err != nil {

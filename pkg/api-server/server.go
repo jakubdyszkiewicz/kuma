@@ -167,7 +167,8 @@ func NewApiServer(
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create configuration webservice")
 	}
-	if err := addIndexWsEndpoints(ws, rt.GetInstanceId, rt.GetClusterId, guiUrl); err != nil {
+	vipsPersistence := vips.NewPersistence(rt.ResourceManager(), rt.ConfigManager(), cfg.Experimental.UseTagFirstVirtualOutboundModel)
+	if err := addIndexWsEndpoints(ws, rt.GetInstanceId, rt.GetClusterId, guiUrl, vipsPersistence); err != nil {
 		return nil, errors.Wrap(err, "could not create index webservice")
 	}
 	addWhoamiEndpoints(ws)

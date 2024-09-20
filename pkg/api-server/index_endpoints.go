@@ -1,16 +1,18 @@
 package api_server
 
 import (
+	"context"
 	"os"
 
 	"github.com/emicklei/go-restful/v3"
 
 	"github.com/kumahq/kuma/api/openapi/types"
 	"github.com/kumahq/kuma/pkg/api-server/authn"
+	"github.com/kumahq/kuma/pkg/dns/vips"
 	kuma_version "github.com/kumahq/kuma/pkg/version"
 )
 
-func addIndexWsEndpoints(ws *restful.WebService, getInstanceId func() string, getClusterId func() string, guiURL string) error {
+func addIndexWsEndpoints(ws *restful.WebService, getInstanceId func() string, getClusterId func() string, guiURL string, persistence *vips.Persistence) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err
@@ -21,6 +23,14 @@ func addIndexWsEndpoints(ws *restful.WebService, getInstanceId func() string, ge
 	ws.Route(ws.GET("/").
 		Metadata(authn.MetadataAuthKey, authn.MetadataAuthSkip).
 		To(func(req *restful.Request, resp *restful.Response) {
+			outbound, err := persistence.GetByMesh(context.Background(), "trafficroute") // trafficroute
+			if err != nil {
+				log.Error(err, "error while getting vips")
+			}
+			for _, he := range outbound.HostnameEntries() {
+				log.Info("VIPS", "he", he.String(), "vo", outbound.Get(he))
+			}
+
 			if instanceId == "" {
 				instanceId = getInstanceId()
 			}
