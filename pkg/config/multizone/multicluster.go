@@ -46,7 +46,6 @@ func DefaultGlobalConfig() *GlobalConfig {
 			TlsMinVersion:            "TLSv1_2",
 			TlsCipherSuites:          []string{},
 			NackBackoff:              config_types.Duration{Duration: 5 * time.Second},
-			DisableSOTW:              false,
 		},
 	}
 }
@@ -63,6 +62,9 @@ type ZoneConfig struct {
 	KDS *KdsClientConfig `json:"kds,omitempty"`
 	// DisableOriginLabelValidation disables validation of the origin label when applying resources on Zone CP
 	DisableOriginLabelValidation bool `json:"disableOriginLabelValidation,omitempty" envconfig:"kuma_multizone_zone_disable_origin_label_validation"`
+	// IngressUpdateInterval is the interval between the CP updating the list of
+	// available services on ZoneIngress.
+	IngressUpdateInterval config_types.Duration `json:"ingressUpdateInterval,omitempty" envconfig:"kuma_multizone_zone_ingress_update_interval"`
 }
 
 func (r *ZoneConfig) Sanitize() {
@@ -124,6 +126,7 @@ func DefaultZoneConfig() *ZoneConfig {
 			NackBackoff:     config_types.Duration{Duration: 5 * time.Second},
 		},
 		DisableOriginLabelValidation: false,
+		IngressUpdateInterval:        config_types.Duration{Duration: 1 * time.Second},
 	}
 }
 

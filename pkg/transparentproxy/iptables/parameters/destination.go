@@ -1,11 +1,13 @@
 package parameters
 
+var _ ParameterBuilder = &DestinationParameter{}
+
 type DestinationParameter struct {
 	address string
 }
 
-func (p *DestinationParameter) Build(bool) string {
-	return p.address
+func (p *DestinationParameter) Build(bool) []string {
+	return []string{p.address}
 }
 
 func (p *DestinationParameter) Negate() ParameterBuilder {
@@ -27,6 +29,10 @@ func destination(address string, negative bool) *Parameter {
 //
 // ref. iptables(8) > PARAMETERS
 func Destination(address string) *Parameter {
+	if address == "" {
+		return nil
+	}
+
 	return destination(address, false)
 }
 

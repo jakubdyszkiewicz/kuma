@@ -29,6 +29,16 @@ const FeatureZonePingHealth string = "zone-ping-health"
 // issue https://github.com/kumahq/kuma/pull/8450 and can handle the hash suffix in the resource name.
 const FeatureHashSuffix string = "hash-suffix"
 
+// FeatureHostnameGeneratorMzSelector means that the zone control plane supports HostnameGenerator
+// with selectors of meshMultiZoneService. We don't want to send such resources to older zones.
+// Otherwise, the zone control plane would reject all hostname generators
+const FeatureHostnameGeneratorMzSelector string = "hg-mz-selector"
+
+// FeatureProducerPolicyFlow means that the zone control plane supports the producer policy flow.
+const FeatureProducerPolicyFlow string = "producer-policy-flow"
+
+const FeatureOptionalTopLevelTargetRef string = "optional-top-level-target-ref"
+
 func ContextHasFeature(ctx context.Context, feature string) bool {
 	md, _ := metadata.FromIncomingContext(ctx)
 	features := md.Get(FeaturesMetadataKey)

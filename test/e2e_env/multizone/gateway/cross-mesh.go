@@ -49,6 +49,9 @@ func CrossMeshGatewayOnMultizone() {
 	const crossMeshGatewayName = "cross-mesh-gateway"
 	const edgeGatewayName = "cross-mesh-edge-gateway"
 
+	crossMeshGatewayServiceName := fmt.Sprintf("%s_%s_svc", crossMeshGatewayName, gatewayTestNamespace)
+	edgeGatewayServiceName := fmt.Sprintf("%s_%s_svc", edgeGatewayName, gatewayTestNamespace)
+
 	const gatewayMesh = "cross-mesh-gateway"
 	const gatewayOtherMesh = "cross-mesh-other"
 
@@ -65,11 +68,11 @@ func CrossMeshGatewayOnMultizone() {
 	}
 
 	crossMeshGatewayYaml := universal_gateway.MkGateway(
-		crossMeshGatewayName, gatewayMesh, true, crossMeshHostname, echoServerService(gatewayMesh, gatewayTestNamespace), crossMeshGatewayPort,
+		crossMeshGatewayName, gatewayMesh, crossMeshGatewayServiceName, true, crossMeshHostname, echoServerService(gatewayMesh, gatewayTestNamespace), crossMeshGatewayPort,
 	)
 	crossMeshGatewayInstanceYaml := k8s_gateway.MkGatewayInstance(crossMeshGatewayName, gatewayTestNamespace, gatewayMesh)
 	edgeGatewayYaml := universal_gateway.MkGateway(
-		edgeGatewayName, gatewayOtherMesh, false, "", echoServerService(gatewayOtherMesh, gatewayTestNamespace), edgeGatewayPort,
+		edgeGatewayName, gatewayOtherMesh, edgeGatewayServiceName, false, "", echoServerService(gatewayOtherMesh, gatewayTestNamespace), edgeGatewayPort,
 	)
 	edgeGatewayInstanceYaml := k8s_gateway.MkGatewayInstance(
 		edgeGatewayName, gatewayTestNamespace, gatewayOtherMesh,
@@ -103,6 +106,13 @@ func CrossMeshGatewayOnMultizone() {
 			Install(democlient.Install(democlient.WithMesh(gatewayOtherMesh), democlient.WithNamespace(gatewayClientNamespaceOtherMesh))).
 			Install(democlient.Install(democlient.WithMesh(gatewayMesh), democlient.WithNamespace(gatewayClientNamespaceSameMesh)))
 		Expect(otherZoneSetup.Setup(multizone.KubeZone2)).To(Succeed())
+	})
+
+	AfterEachFailure(func() {
+		DebugUniversal(multizone.Global, gatewayMesh)
+		DebugUniversal(multizone.Global, gatewayOtherMesh)
+		DebugKube(multizone.KubeZone1, gatewayMesh, gatewayClientNamespaceOtherMesh, gatewayClientNamespaceSameMesh, gatewayTestNamespace)
+		DebugKube(multizone.KubeZone2, gatewayOtherMesh, gatewayClientNamespaceOtherMesh, gatewayClientNamespaceSameMesh)
 	})
 
 	E2EAfterAll(func() {
@@ -141,7 +151,7 @@ func CrossMeshGatewayOnMultizone() {
 			filter := fmt.Sprintf(
 				"cluster.%s_%s.upstream_rq_total",
 				gatewayMesh,
-				crossMeshGatewayName,
+				crossMeshGatewayServiceName,
 			)
 			var currentStat stats.StatItem
 

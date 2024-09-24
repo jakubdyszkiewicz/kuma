@@ -32,6 +32,10 @@ func ExcludeOutboundPort() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
+	AfterEachFailure(func() {
+		DebugKube(kubernetes.Cluster, meshName, namespace)
+	})
+
 	E2EAfterAll(func() {
 		Expect(kubernetes.Cluster.TriggerDeleteNamespace(namespace)).To(Succeed())
 		Expect(kubernetes.Cluster.TriggerDeleteNamespace(namespaceExternal)).To(Succeed())
@@ -43,9 +47,8 @@ func ExcludeOutboundPort() {
 			testserver.WithName("test-server"),
 			testserver.WithNamespace(namespace),
 			testserver.WithPodAnnotations(map[string]string{
-				metadata.KumaInitFirst:                             "true",
-				metadata.KumaTrafficExcludeOutboundTCPPortsForUIDs: "80:1234",
-				metadata.KumaTrafficExcludeOutboundUDPPortsForUIDs: "53:1234",
+				metadata.KumaInitFirst:                          "true",
+				metadata.KumaTrafficExcludeOutboundPortsForUIDs: "tcp:80:1234;udp:53:1234",
 			}),
 			testserver.AddInitContainer(corev1.Container{
 				Name:            "init-test-server",

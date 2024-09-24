@@ -25,10 +25,11 @@ var DefaultConfig = func() Config {
 			},
 		},
 		Dataplane: Dataplane{
-			Mesh:      "",
-			Name:      "", // Dataplane name must be set explicitly
-			DrainTime: config_types.Duration{Duration: 30 * time.Second},
-			ProxyType: "dataplane",
+			Mesh:          "",
+			Name:          "", // Dataplane name must be set explicitly
+			DrainTime:     config_types.Duration{Duration: 30 * time.Second},
+			ProxyType:     "dataplane",
+			ReadinessPort: 9902,
 		},
 		DataplaneRuntime: DataplaneRuntime{
 			BinaryPath: "envoy",
@@ -41,12 +42,14 @@ var DefaultConfig = func() Config {
 			Enabled:                   true,
 			CoreDNSPort:               15053,
 			EnvoyDNSPort:              15054,
-			CoreDNSEmptyPort:          15055,
 			CoreDNSBinaryPath:         "coredns",
 			CoreDNSConfigTemplatePath: "",
 			ConfigDir:                 "", // if left empty, a temporary directory will be generated automatically
 			PrometheusPort:            19153,
 			CoreDNSLogging:            false,
+		},
+		ApplicationProbeProxyServer: ApplicationProbeProxyServer{
+			Port: 9001,
 		},
 	}
 }
@@ -60,7 +63,8 @@ type Config struct {
 	// DataplaneRuntime defines the context in which dataplane (Envoy) runs.
 	DataplaneRuntime DataplaneRuntime `json:"dataplaneRuntime,omitempty"`
 	// DNS defines a configuration for builtin DNS in Kuma DP
-	DNS DNS `json:"dns,omitempty"`
+	DNS                         DNS                         `json:"dns,omitempty"`
+	ApplicationProbeProxyServer ApplicationProbeProxyServer `json:"applicationProbeProxyServer,omitempty"`
 }
 
 func (c *Config) Sanitize() {
@@ -129,10 +133,12 @@ type Dataplane struct {
 	Mesh string `json:"mesh,omitempty" envconfig:"kuma_dataplane_mesh"`
 	// Dataplane name.
 	Name string `json:"name,omitempty" envconfig:"kuma_dataplane_name"`
-	// ProxyType defines mode which should be used, supported values: 'dataplane', 'ingress'
+	// ProxyType defines mode which should be used, supported values: 'dataplane', 'ingress', 'egress'
 	ProxyType string `json:"proxyType,omitempty" envconfig:"kuma_dataplane_proxy_type"`
 	// Drain time for listeners.
 	DrainTime config_types.Duration `json:"drainTime,omitempty" envconfig:"kuma_dataplane_drain_time"`
+	// Port that exposes kuma-dp readiness status on localhost, set this value to 0 to provide readiness by "/ready" endpoint from Envoy adminAPI
+	ReadinessPort uint32 `json:"readinessPort,omitempty" envconfig:"kuma_readiness_port"`
 }
 
 func (d *Dataplane) PostProcess() error {
@@ -209,6 +215,8 @@ type DataplaneRuntime struct {
 	Metrics Metrics `json:"metrics,omitempty"`
 	// DynamicConfiguration defines properties of dataplane dynamic configuration
 	DynamicConfiguration DynamicConfiguration `json:"dynamicConfiguration" envconfig:"kuma_dataplane_runtime_dynamic_configuration"`
+	// SystemCaPath defines path of system provided Ca
+	SystemCaPath string `json:"systemCaPath,omitempty" envconfig:"kuma_dataplane_runtime_dynamic_system_ca_path"`
 }
 
 type Metrics struct {
@@ -304,6 +312,10 @@ func (d *Dataplane) Validate() error {
 		errs = multierr.Append(errs, errors.Errorf(".DrainTime must be positive"))
 	}
 
+	if d.ReadinessPort > 65353 {
+		return errors.New(".ReadinessPort has to be in [0, 65353] range")
+	}
+
 	return errs
 }
 
@@ -351,8 +363,6 @@ type DNS struct {
 	Enabled bool `json:"enabled,omitempty" envconfig:"kuma_dns_enabled"`
 	// CoreDNSPort defines a port that handles DNS requests. When transparent proxy is enabled then iptables will redirect DNS traffic to this port.
 	CoreDNSPort uint32 `json:"coreDnsPort,omitempty" envconfig:"kuma_dns_core_dns_port"`
-	// CoreDNSEmptyPort defines a port that always responds with empty NXDOMAIN respond. It is required to implement a fallback to a real DNS
-	CoreDNSEmptyPort uint32 `json:"coreDnsEmptyPort,omitempty" envconfig:"kuma_dns_core_dns_empty_port"`
 	// EnvoyDNSPort defines a port that handles Virtual IP resolving by Envoy. CoreDNS should be configured that it first tries to use this DNS resolver and then the real one.
 	EnvoyDNSPort uint32 `json:"envoyDnsPort,omitempty" envconfig:"kuma_dns_envoy_dns_port"`
 	// CoreDNSBinaryPath defines a path to CoreDNS binary.
@@ -374,9 +384,6 @@ func (d *DNS) Validate() error {
 	if d.CoreDNSPort > 65353 {
 		return errors.New(".CoreDNSPort has to be in [0, 65353] range")
 	}
-	if d.CoreDNSEmptyPort > 65353 {
-		return errors.New(".CoreDNSEmptyPort has to be in [0, 65353] range")
-	}
 	if d.EnvoyDNSPort > 65353 {
 		return errors.New(".EnvoyDNSPort has to be in [0, 65353] range")
 	}
@@ -385,6 +392,22 @@ func (d *DNS) Validate() error {
 	}
 	if d.CoreDNSBinaryPath == "" {
 		return errors.New(".CoreDNSBinaryPath cannot be empty")
+	}
+	return nil
+}
+
+type ApplicationProbeProxyServer struct {
+	config.BaseConfig
+
+	Port uint32 `json:"port,omitempty" envconfig:"kuma_application_probe_proxy_port"`
+}
+
+func (p *ApplicationProbeProxyServer) Validate() error {
+	if p.Port == 0 {
+		return nil
+	}
+	if p.Port > 65353 {
+		return errors.New(".Port has to be in [0, 65353] range")
 	}
 	return nil
 }

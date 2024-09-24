@@ -48,11 +48,25 @@ rules:
       - pods
       - configmaps
       - nodes
-      - secrets
     verbs:
       - get
       - list
       - watch
+  - apiGroups:
+    - ""
+    resources:
+      - secrets
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - "discovery.k8s.io"
+    resources:
+      - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
   - apiGroups:
       - "apps"
     resources:
@@ -131,6 +145,14 @@ rules:
       - update
       - patch
   - apiGroups:
+    - "discovery.k8s.io"
+    resources:
+    - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
       - kuma.io
     resources:
       - dataplanes
@@ -169,13 +191,18 @@ rules:
       - meshhttproutes
       - meshloadbalancingstrategies
       - meshmetrics
+      - meshpassthroughs
       - meshproxypatches
       - meshratelimits
       - meshretries
       - meshtcproutes
       - meshtimeouts
+      - meshtlses
       - meshtraces
       - meshtrafficpermissions
+      - hostnamegenerators
+      - meshexternalservices
+      - meshmultizoneservices
       - meshservices
     verbs:
       - get
@@ -355,7 +382,7 @@ spec:
     metadata:
       annotations:
         checksum/config: 154c47a95fc93687dd1e825cea7f843d0fe8c450f82014d27cd7eb1a49f3bd35
-        checksum/tls-secrets: 78426437c5cfc1153b8cbb96647d3d8cb2c7e189a62b31a080c5bbe4b360dc25
+        checksum/tls-secrets: f0d59ac1c30adfd19564af3b7c6a0c7b9f3a8a3cfeccd4e54198e8ad4f3d77e3
       labels: 
         app: kuma-control-plane
         app.kubernetes.io/name: kuma
@@ -390,6 +417,7 @@ spec:
         kubernetes.io/os: linux
       hostNetwork: false
       terminationGracePeriodSeconds: 30
+      
       containers:
         - name: control-plane
           image: "kuma-ci/kuma-cp:greatest"
@@ -413,8 +441,6 @@ spec:
               value: "false"
             - name: KUMA_ENVIRONMENT
               value: "kubernetes"
-            - name: KUMA_EXPERIMENTAL_GATEWAY_API
-              value: "true"
             - name: KUMA_GENERAL_TLS_CERT_FILE
               value: "/var/run/secrets/kuma.io/tls-cert/tls.crt"
             - name: KUMA_GENERAL_TLS_KEY_FILE
@@ -430,11 +456,13 @@ spec:
             - name: KUMA_MULTIZONE_ZONE_NAME
               value: "zone-1"
             - name: KUMA_PLUGIN_POLICIES_ENABLED
-              value: "meshaccesslogs,meshcircuitbreakers,meshfaultinjections,meshhealthchecks,meshhttproutes,meshloadbalancingstrategies,meshmetrics,meshproxypatches,meshratelimits,meshretries,meshtcproutes,meshtimeouts,meshtraces,meshtrafficpermissions"
+              value: "meshaccesslogs,meshcircuitbreakers,meshfaultinjections,meshhealthchecks,meshhttproutes,meshloadbalancingstrategies,meshmetrics,meshpassthroughs,meshproxypatches,meshratelimits,meshretries,meshtcproutes,meshtimeouts,meshtlses,meshtraces,meshtrafficpermissions"
             - name: KUMA_RUNTIME_KUBERNETES_ADMISSION_SERVER_CERT_DIR
               value: "/var/run/secrets/kuma.io/tls-cert"
             - name: KUMA_RUNTIME_KUBERNETES_ADMISSION_SERVER_PORT
               value: "5443"
+            - name: KUMA_RUNTIME_KUBERNETES_ALLOWED_USERS
+              value: "system:serviceaccount:kuma:kuma-control-plane"
             - name: KUMA_RUNTIME_KUBERNETES_CONTROL_PLANE_SERVICE_NAME
               value: "kuma-ctrl-plane"
             - name: KUMA_RUNTIME_KUBERNETES_INJECTOR_CA_CERT_FILE
@@ -443,8 +471,6 @@ spec:
               value: "false"
             - name: KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_IMAGE
               value: "kuma-ci/kuma-dp:greatest"
-            - name: KUMA_RUNTIME_KUBERNETES_SERVICE_ACCOUNT_NAME
-              value: "system:serviceaccount:kuma:kuma-control-plane"
             - name: KUMA_STORE_KUBERNETES_SYSTEM_NAMESPACE
               value: "kuma"
             - name: KUMA_STORE_TYPE
@@ -453,6 +479,16 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  containerName: control-plane
+                  resource: limits.memory
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  containerName: control-plane
+                  resource: limits.cpu
           args:
             - run
             - --log-level=info
@@ -566,6 +602,16 @@ webhooks:
           - UPDATE
         resources:
           - meshes
+          - dataplanes
+          - dataplaneinsights
+          - meshgateways
+          - zoneingresses
+          - zoneingressinsights
+          - zoneegresses
+          - zoneegressinsights
+          - serviceinsights
+          - zone
+          - zoneinsights
           - meshaccesslogs
           - meshcircuitbreakers
           - meshfaultinjections
@@ -573,13 +619,18 @@ webhooks:
           - meshhttproutes
           - meshloadbalancingstrategies
           - meshmetrics
+          - meshpassthroughs
           - meshproxypatches
           - meshratelimits
           - meshretries
           - meshtcproutes
           - meshtimeouts
+          - meshtlses
           - meshtraces
           - meshtrafficpermissions
+          - hostnamegenerators
+          - meshexternalservices
+          - meshmultizoneservices
           - meshservices
     sideEffects: None
   - name: owner-reference.kuma-admission.kuma.io
@@ -626,13 +677,18 @@ webhooks:
           - meshhttproutes
           - meshloadbalancingstrategies
           - meshmetrics
+          - meshpassthroughs
           - meshproxypatches
           - meshratelimits
           - meshretries
           - meshtcproutes
           - meshtimeouts
+          - meshtlses
           - meshtraces
           - meshtrafficpermissions
+          - hostnamegenerators
+          - meshexternalservices
+          - meshmultizoneservices
           - meshservices
   
       
@@ -730,7 +786,7 @@ webhooks:
           - dataplanes
           - externalservices
           - faultinjections
-          - gatewayinstances
+          - meshgatewayinstances
           - healthchecks
           - meshes
           - meshgateways
@@ -752,13 +808,18 @@ webhooks:
           - meshhttproutes
           - meshloadbalancingstrategies
           - meshmetrics
+          - meshpassthroughs
           - meshproxypatches
           - meshratelimits
           - meshretries
           - meshtcproutes
           - meshtimeouts
+          - meshtlses
           - meshtraces
           - meshtrafficpermissions
+          - hostnamegenerators
+          - meshexternalservices
+          - meshmultizoneservices
           - meshservices
     
       

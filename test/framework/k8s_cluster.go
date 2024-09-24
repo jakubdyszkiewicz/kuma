@@ -235,8 +235,7 @@ func (c *K8sCluster) WaitNodeDelete(node string) (string, error) {
 		})
 }
 
-func (c *K8sCluster) GetPodLogs(pod v1.Pod) (string, error) {
-	podLogOpts := v1.PodLogOptions{}
+func (c *K8sCluster) GetPodLogs(pod v1.Pod, podLogOpts v1.PodLogOptions) (string, error) {
 	// creates the clientset
 	clientset, err := k8s.GetKubernetesClientFromOptionsE(c.t, c.GetKubectlOptions())
 	if err != nil {
@@ -328,10 +327,6 @@ func (c *K8sCluster) yamlForKumaViaKubectl(mode string) (string, error) {
 		argsMap["--env-var"] = "KUMA_BOOTSTRAP_SERVER_API_VERSION=" + Config.XDSApiVersion
 	}
 
-	if Config.CIDR != "" {
-		argsMap["--env-var"] = fmt.Sprintf("KUMA_DNS_SERVER_CIDR=%s", Config.CIDR)
-	}
-
 	for opt, value := range c.opts.ctlOpts {
 		argsMap[opt] = value
 	}
@@ -339,6 +334,17 @@ func (c *K8sCluster) yamlForKumaViaKubectl(mode string) (string, error) {
 	var args []string
 	for k, v := range argsMap {
 		args = append(args, k, v)
+	}
+
+	if Config.IPV6 {
+		args = append(args, "--env-var", "KUMA_DNS_SERVER_CIDR=fd00:fd00::/64")
+		args = append(args, "--env-var", "KUMA_IPAM_MESH_SERVICE_CIDR=fd00:fd01::/64")
+		args = append(args, "--env-var", "KUMA_IPAM_MESH_EXTERNAL_SERVICE_CIDR=fd00:fd02::/64")
+		args = append(args, "--env-var", "KUMA_IPAM_MESH_MULTI_ZONE_SERVICE_CIDR=fd00:fd03::/64")
+	}
+
+	if Config.Debug {
+		args = append(args, "--set", fmt.Sprintf("%scontrolPlane.logLevel=debug", Config.HelmSubChartPrefix))
 	}
 
 	for k, v := range c.opts.env {
@@ -388,8 +394,19 @@ func (c *K8sCluster) genValues(mode string) map[string]string {
 		values["cni.confName"] = Config.CNIConf.ConfName
 	}
 
-	if Config.CIDR != "" {
-		values["controlPlane.envVars.KUMA_DNS_SERVER_CIDR"] = Config.CIDR
+	if Config.IPV6 {
+		values["controlPlane.envVars.KUMA_DNS_SERVER_CIDR"] = "fd00:fd00::/64"
+		values["controlPlane.envVars.KUMA_IPAM_MESH_SERVICE_CIDR"] = "fd00:fd01::/64"
+		values["controlPlane.envVars.KUMA_IPAM_MESH_EXTERNAL_SERVICE_CIDR"] = "fd00:fd02::/64"
+		values["controlPlane.envVars.KUMA_IPAM_MESH_MULTI_ZONE_SERVICE_CIDR"] = "fd00:fd03::/64"
+	}
+
+	if Config.Debug {
+		values["controlPlane.logLevel"] = "debug"
+	}
+
+	for key, value := range c.opts.env {
+		values[fmt.Sprintf("controlPlane.envVars.%s", key)] = value
 	}
 
 	switch mode {
@@ -491,6 +508,16 @@ func (c *K8sCluster) DeployKuma(mode core.CpMode, opt ...KumaDeploymentOption) e
 		c.opts.env["KUMA_MULTIZONE_ZONE_KDS_TLS_SKIP_VERIFY"] = "true"
 	}
 
+	if Config.Debug {
+		dpEnvVarKey := "KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_ENV_VARS"
+		debugEnv := "KUMA_DATAPLANE_RUNTIME_ENVOY_LOG_LEVEL:debug"
+		if envVars, ok := c.opts.env[dpEnvVarKey]; ok {
+			c.opts.env[dpEnvVarKey] = envVars + "," + debugEnv
+		} else {
+			c.opts.env[dpEnvVarKey] = debugEnv
+		}
+	}
+
 	var err error
 	switch c.opts.installationMode {
 	case KumactlInstallationMode:
@@ -517,7 +544,13 @@ func (c *K8sCluster) DeployKuma(mode core.CpMode, opt ...KumaDeploymentOption) e
 	var wg sync.WaitGroup
 	var appsToInstall []appInstallation
 	if c.opts.cni {
-		appsToInstall = append(appsToInstall, appInstallation{Config.CNIApp, Config.CNINamespace, 1, nil})
+		namespace := ""
+		if c.opts.cniNamespace != "" {
+			namespace = c.opts.cniNamespace
+		} else {
+			namespace = Config.CNINamespace
+		}
+		appsToInstall = append(appsToInstall, appInstallation{Config.CNIApp, namespace, 1, nil})
 	}
 	if c.opts.zoneIngress {
 		appsToInstall = append(appsToInstall, appInstallation{Config.ZoneIngressApp, Config.KumaNamespace, 1, nil})
@@ -809,12 +842,19 @@ func (c *K8sCluster) GetKumaCPLogs() (string, error) {
 	}
 
 	for _, p := range pods {
-		log, err := c.GetPodLogs(p)
+		log, err := c.GetPodLogs(p, v1.PodLogOptions{})
 		if err != nil {
 			return "", err
 		}
 
 		logs = logs + "\n >>> " + p.Name + "\n" + log
+
+		log, err = c.GetPodLogs(p, v1.PodLogOptions{
+			Previous: true,
+		})
+		if err == nil {
+			logs = logs + "\n >>> previous " + p.Name + "\n" + log
+		}
 	}
 
 	return logs, nil
@@ -832,6 +872,8 @@ func (c *K8sCluster) VerifyKuma() error {
 	if err := c.controlplane.VerifyKumaCtl(); err != nil {
 		return err
 	}
+
+	k8s.WaitUntilServiceAvailable(c.GetTesting(), c.GetKubectlOptions(Config.KumaNamespace), Config.KumaServiceName, DefaultRetries, DefaultTimeout)
 
 	return nil
 }
@@ -1005,6 +1047,34 @@ func (c *K8sCluster) DeleteMesh(mesh string) error {
 		})
 	Logf("mesh: " + mesh + " deleted in: " + time.Since(now).String())
 	return err
+}
+
+func (c *K8sCluster) GetClusterIP(serviceName, namespace string) (string, error) {
+	service, err := k8s.GetServiceE(
+		c.t,
+		c.GetKubectlOptions(namespace),
+		serviceName,
+	)
+	if err != nil {
+		return "", err
+	}
+	return service.Spec.ClusterIP, nil
+}
+
+func (c *K8sCluster) GetLBIngressIP(serviceName, namespace string) (string, error) {
+	service, err := k8s.GetServiceE(
+		c.t,
+		c.GetKubectlOptions(namespace),
+		serviceName,
+	)
+	if err != nil {
+		return "", err
+	}
+	ingress := service.Status.LoadBalancer.Ingress
+	if len(ingress) == 0 {
+		return "", errors.Errorf("ingress information not found on the load balancer service '%s'", serviceName)
+	}
+	return ingress[0].IP, nil
 }
 
 func (c *K8sCluster) DeployApp(opt ...AppDeploymentOption) error {

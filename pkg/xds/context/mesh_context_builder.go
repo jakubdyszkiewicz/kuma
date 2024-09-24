@@ -11,10 +11,11 @@ import (
 	"github.com/pkg/errors"
 
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
-	"github.com/kumahq/kuma/pkg/core"
 	"github.com/kumahq/kuma/pkg/core/datasource"
 	"github.com/kumahq/kuma/pkg/core/dns/lookup"
 	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	meshextenralservice_api "github.com/kumahq/kuma/pkg/core/resources/apis/meshexternalservice/api/v1alpha1"
+	meshmzservice_api "github.com/kumahq/kuma/pkg/core/resources/apis/meshmultizoneservice/api/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core/resources/apis/meshservice/api/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core/resources/apis/system"
 	"github.com/kumahq/kuma/pkg/core/resources/manager"
@@ -22,6 +23,7 @@ import (
 	"github.com/kumahq/kuma/pkg/core/resources/registry"
 	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
 	"github.com/kumahq/kuma/pkg/core/xds"
+	xds_types "github.com/kumahq/kuma/pkg/core/xds/types"
 	"github.com/kumahq/kuma/pkg/dns/vips"
 	"github.com/kumahq/kuma/pkg/log"
 	"github.com/kumahq/kuma/pkg/util/maps"
@@ -29,18 +31,15 @@ import (
 	xds_topology "github.com/kumahq/kuma/pkg/xds/topology"
 )
 
-var logger = core.Log.WithName("xds").WithName("context")
-
 type meshContextBuilder struct {
-	rm                manager.ReadOnlyResourceManager
-	typeSet           map[core_model.ResourceType]struct{}
-	ipFunc            lookup.LookupIPFunc
-	zone              string
-	vipsPersistence   *vips.Persistence
-	topLevelDomain    string
-	vipPort           uint32
-	rsGraphBuilder    ReachableServicesGraphBuilder
-	skipPersistedVIPs bool
+	rm              manager.ReadOnlyResourceManager
+	typeSet         map[core_model.ResourceType]struct{}
+	ipFunc          lookup.LookupIPFunc
+	zone            string
+	vipsPersistence *vips.Persistence
+	topLevelDomain  string
+	vipPort         uint32
+	rsGraphBuilder  ReachableServicesGraphBuilder
 }
 
 // MeshContextBuilder
@@ -71,7 +70,6 @@ func NewMeshContextBuilder(
 	topLevelDomain string,
 	vipPort uint32,
 	rsGraphBuilder ReachableServicesGraphBuilder,
-	skipPersistedVIPs bool,
 ) MeshContextBuilder {
 	typeSet := map[core_model.ResourceType]struct{}{}
 	for _, typ := range types {
@@ -79,15 +77,14 @@ func NewMeshContextBuilder(
 	}
 
 	return &meshContextBuilder{
-		rm:                rm,
-		typeSet:           typeSet,
-		ipFunc:            ipFunc,
-		zone:              zone,
-		vipsPersistence:   vipsPersistence,
-		topLevelDomain:    topLevelDomain,
-		vipPort:           vipPort,
-		rsGraphBuilder:    rsGraphBuilder,
-		skipPersistedVIPs: skipPersistedVIPs,
+		rm:              rm,
+		typeSet:         typeSet,
+		ipFunc:          ipFunc,
+		zone:            zone,
+		vipsPersistence: vipsPersistence,
+		topLevelDomain:  topLevelDomain,
+		vipPort:         vipPort,
+		rsGraphBuilder:  rsGraphBuilder,
 	}
 }
 
@@ -161,30 +158,61 @@ func (m *meshContextBuilder) BuildIfChanged(ctx context.Context, meshName string
 		dataplanesByName[dp.Meta.GetName()] = dp
 	}
 	meshServices := resources.MeshServices().Items
-	meshServicesByName := make(map[string]*v1alpha1.MeshServiceResource, len(dataplanes))
+	meshServicesByName := make(map[core_model.ResourceIdentifier]*v1alpha1.MeshServiceResource, len(meshServices))
+	meshServicesByLabelByValue := LabelsToValuesToResourceIdentifier{}
 	for _, ms := range meshServices {
-		meshServicesByName[ms.Meta.GetName()] = ms
+		ri := core_model.NewResourceIdentifier(ms)
+		meshServicesByName[ri] = ms
+		buildLabelValueToServiceNames(ri, meshServicesByLabelByValue, ms.Meta.GetLabels())
 	}
 
-	var domains []xds.VIPDomains
-	var outbounds []*mesh_proto.Dataplane_Networking_Outbound
-	if !m.skipPersistedVIPs {
+	meshExternalServices := resources.MeshExternalServices().Items
+	meshExternalServicesByName := make(map[core_model.ResourceIdentifier]*meshextenralservice_api.MeshExternalServiceResource, len(meshExternalServices))
+	meshExternalServicesByLabelByValue := LabelsToValuesToResourceIdentifier{}
+	for _, mes := range meshExternalServices {
+		ri := core_model.NewResourceIdentifier(mes)
+		meshExternalServicesByName[ri] = mes
+		buildLabelValueToServiceNames(ri, meshExternalServicesByLabelByValue, mes.Meta.GetLabels())
+	}
+	meshMultiZoneServices := resources.MeshMultiZoneServices().Items
+	meshMultiZoneServicesByName := make(map[core_model.ResourceIdentifier]*meshmzservice_api.MeshMultiZoneServiceResource, len(meshMultiZoneServices))
+	meshMultiZoneServiceNameByLabelByValue := LabelsToValuesToResourceIdentifier{}
+	for _, svc := range meshMultiZoneServices {
+		ri := core_model.NewResourceIdentifier(svc)
+		meshMultiZoneServicesByName[ri] = svc
+		buildLabelValueToServiceNames(ri, meshMultiZoneServiceNameByLabelByValue, svc.Meta.GetLabels())
+	}
+
+	var domains []xds_types.VIPDomains
+	var outbounds []*xds_types.Outbound
+	if baseMeshContext.Mesh.Spec.MeshServicesEnabled() != mesh_proto.Mesh_MeshServices_Exclusive {
 		virtualOutboundView, err := m.vipsPersistence.GetByMesh(ctx, meshName)
 		if err != nil {
 			return nil, errors.Wrap(err, "could not fetch vips")
 		}
 		// resolve all the domains
-		domains, outbounds = xds_topology.VIPOutbounds(virtualOutboundView, m.topLevelDomain, m.vipPort)
+		vipDomains, vipOutbounds := xds_topology.VIPOutbounds(virtualOutboundView, m.topLevelDomain, m.vipPort)
+		outbounds = append(outbounds, vipOutbounds...)
+		domains = append(domains, vipDomains...)
 	}
-	outbounds = append(outbounds, xds_topology.MeshServiceOutbounds(meshServices)...)
+
+	outbounds = append(outbounds, xds_topology.Outbounds(meshServices)...)
+	outbounds = append(outbounds, xds_topology.Outbounds(meshExternalServices)...)
+	outbounds = append(outbounds, xds_topology.Outbounds(meshMultiZoneServices)...)
+
+	domains = append(domains, xds_topology.Domains(meshServices)...)
+	domains = append(domains, xds_topology.Domains(meshExternalServices)...)
+	domains = append(domains, xds_topology.Domains(meshMultiZoneServices)...)
+
 	loader := datasource.NewStaticLoader(resources.Secrets().Items)
 
 	mesh := baseMeshContext.Mesh
 	zoneIngresses := resources.ZoneIngresses().Items
 	zoneEgresses := resources.ZoneEgresses().Items
 	externalServices := resources.ExternalServices().Items
-	endpointMap := xds_topology.BuildEdsEndpointMap(mesh, m.zone, meshServices, dataplanes, zoneIngresses, zoneEgresses, externalServices)
+	endpointMap := xds_topology.BuildEdsEndpointMap(mesh, m.zone, meshServicesByName, meshMultiZoneServices, meshExternalServices, dataplanes, zoneIngresses, zoneEgresses, externalServices)
 	esEndpointMap := xds_topology.BuildExternalServicesEndpointMap(ctx, mesh, externalServices, loader, m.zone)
+	ingressEndpointMap := xds_topology.BuildIngressEndpointMap(mesh, m.zone, meshServicesByName, meshMultiZoneServices, meshExternalServices, dataplanes, externalServices, resources.Gateways().Items, zoneEgresses)
 
 	crossMeshEndpointMap := map[string]xds.EndpointMap{}
 	for otherMeshName, gateways := range resources.gatewaysAndDataplanesForMesh(mesh) {
@@ -200,19 +228,25 @@ func (m *meshContextBuilder) BuildIfChanged(ctx context.Context, meshName string
 	}
 
 	return &MeshContext{
-		Hash:                        newHash,
-		Resource:                    mesh,
-		Resources:                   resources,
-		DataplanesByName:            dataplanesByName,
-		MeshServiceByName:           meshServicesByName,
-		EndpointMap:                 endpointMap,
-		ExternalServicesEndpointMap: esEndpointMap,
-		CrossMeshEndpoints:          crossMeshEndpointMap,
-		VIPDomains:                  domains,
-		VIPOutbounds:                outbounds,
-		ServicesInformation:         m.generateServicesInformation(mesh, resources.ServiceInsights(), endpointMap, esEndpointMap),
-		DataSourceLoader:            loader,
-		ReachableServicesGraph:      m.rsGraphBuilder(meshName, resources),
+		Hash:                                newHash,
+		Resource:                            mesh,
+		Resources:                           resources,
+		DataplanesByName:                    dataplanesByName,
+		MeshServiceByIdentifier:             meshServicesByName,
+		MeshServicesByLabelByValue:          meshServicesByLabelByValue,
+		MeshExternalServiceByIdentifier:     meshExternalServicesByName,
+		MeshExternalServicesByLabelByValue:  meshExternalServicesByLabelByValue,
+		MeshMultiZoneServiceByIdentifier:    meshMultiZoneServicesByName,
+		MeshMultiZoneServicesByLabelByValue: meshMultiZoneServiceNameByLabelByValue,
+		EndpointMap:                         endpointMap,
+		ExternalServicesEndpointMap:         esEndpointMap,
+		IngressEndpointMap:                  ingressEndpointMap,
+		CrossMeshEndpoints:                  crossMeshEndpointMap,
+		VIPDomains:                          domains,
+		VIPOutbounds:                        outbounds,
+		ServicesInformation:                 m.generateServicesInformation(mesh, resources.ServiceInsights(), endpointMap, esEndpointMap),
+		DataSourceLoader:                    loader,
+		ReachableServicesGraph:              m.rsGraphBuilder(meshName, resources),
 	}, nil
 }
 
@@ -259,7 +293,7 @@ func (m *meshContextBuilder) BuildBaseMeshContextIfChanged(ctx context.Context, 
 		}
 		// Only pick the policies, gateways, external services and the vip config map
 		switch {
-		case desc.IsPolicy || desc.Name == core_mesh.MeshGatewayType || desc.Name == core_mesh.ExternalServiceType:
+		case desc.IsPolicy || desc.IsReferenceableInTo || desc.Name == core_mesh.MeshGatewayType || desc.Name == core_mesh.ExternalServiceType:
 			rmap[t], err = m.fetchResourceList(ctx, t, mesh, nil)
 		case desc.Name == system.ConfigType:
 			rmap[t], err = m.fetchResourceList(ctx, t, mesh, func(rs core_model.Resource) bool {
@@ -336,12 +370,13 @@ func (m *meshContextBuilder) fetchResourceList(ctx context.Context, resType core
 			if !ok {
 				return nil, errors.New("entry is not a zoneIngress this shouldn't happen")
 			}
-			zi, err := xds_topology.ResolveZoneIngressPublicAddress(m.ipFunc, zi)
+
+			resolvedZoneIngress, err := xds_topology.ResolveZoneIngressPublicAddress(m.ipFunc, zi)
 			if err != nil {
 				l.Error(err, "failed to resolve zoneIngress's domain name, ignoring zoneIngress", "name", zi.GetMeta().GetName())
 				return nil, nil
 			}
-			return zi, nil
+			return resolvedZoneIngress, nil
 		case core_mesh.DataplaneType:
 			list, err = modifyAllEntries(list, func(resource core_model.Resource) (core_model.Resource, error) {
 				dp, ok := resource.(*core_mesh.DataplaneResource)
@@ -496,6 +531,22 @@ func (m *meshContextBuilder) decorateWithCrossMeshResources(ctx context.Context,
 	return nil
 }
 
+func buildLabelValueToServiceNames(ri core_model.ResourceIdentifier, resourceNamesByLabels LabelsToValuesToResourceIdentifier, labels map[string]string) {
+	for label, value := range labels {
+		key := LabelValue{
+			Label: label,
+			Value: value,
+		}
+		if _, ok := resourceNamesByLabels[key]; ok {
+			resourceNamesByLabels[key][ri] = true
+		} else {
+			resourceNamesByLabels[key] = map[core_model.ResourceIdentifier]bool{
+				ri: true,
+			}
+		}
+	}
+}
+
 func (m *meshContextBuilder) hash(globalContext *GlobalContext, baseMeshContext *BaseMeshContext, managedTypes []core_model.ResourceType, resources Resources) []byte {
 	slices.Sort(managedTypes)
 	hasher := fnv.New128a()
@@ -533,8 +584,14 @@ func inferServiceProtocol(endpoints []xds.Endpoint) core_mesh.Protocol {
 		return core_mesh.ProtocolUnknown
 	}
 	serviceProtocol := core_mesh.ParseProtocol(endpoints[0].Tags[mesh_proto.ProtocolTag])
+	if endpoints[0].ExternalService != nil && endpoints[0].ExternalService.Protocol != "" {
+		serviceProtocol = endpoints[0].ExternalService.Protocol
+	}
 	for _, endpoint := range endpoints[1:] {
 		endpointProtocol := core_mesh.ParseProtocol(endpoint.Tags[mesh_proto.ProtocolTag])
+		if endpoint.ExternalService != nil && endpoint.ExternalService.Protocol != "" {
+			endpointProtocol = endpoint.ExternalService.Protocol
+		}
 		serviceProtocol = util_protocol.GetCommonProtocol(serviceProtocol, endpointProtocol)
 	}
 	return serviceProtocol

@@ -20,7 +20,7 @@ import (
 const dnsLabel = `[a-z0-9]([-a-z0-9]*[a-z0-9])?`
 
 var (
-	nameCharacterSet     = regexp.MustCompile(`^[0-9a-z.\-_]*$`)
+	NameCharacterSet     = regexp.MustCompile(`^[0-9a-z.\-_]*$`)
 	tagNameCharacterSet  = regexp.MustCompile(`^[a-zA-Z0-9.\-_:/]*$`)
 	tagValueCharacterSet = regexp.MustCompile(`^[a-zA-Z0-9.\-_:]*$`)
 	selectorCharacterSet = regexp.MustCompile(`^([a-zA-Z0-9.\-_:/]*|\*)$`)
@@ -36,6 +36,7 @@ type (
 type ValidateTagsOpts struct {
 	RequireAtLeastOneTag    bool
 	RequireService          bool
+	ForbidService           bool
 	ExtraTagsValidators     []TagsValidatorFunc
 	ExtraTagKeyValidators   []TagKeyValidatorFunc
 	ExtraTagValueValidators []TagValueValidatorFunc
@@ -135,6 +136,9 @@ func validateTagKeyValues(path validators.PathBuilder, keyValues map[string]stri
 		}
 	}
 	_, defined := keyValues[mesh_proto.ServiceTag]
+	if opts.ForbidService && defined {
+		err.AddViolationAt(path, fmt.Sprintf("%q must not be defined", mesh_proto.ServiceTag))
+	}
 	if opts.RequireService && !defined {
 		err.AddViolationAt(path, fmt.Sprintf("mandatory tag %q is missing", mesh_proto.ServiceTag))
 	}
@@ -364,16 +368,30 @@ func ValidateTargetRef(
 		}
 		err.Add(disallowedField("mesh", ref.Mesh, ref.Kind))
 		err.Add(disallowedField("tags", ref.Tags, ref.Kind))
+		err.Add(disallowedField("labels", ref.Labels, ref.Kind))
+		err.Add(disallowedField("namespace", ref.Namespace, ref.Kind))
+		err.Add(disallowedField("sectionName", ref.SectionName, ref.Kind))
 	case common_api.MeshSubset:
 		err.Add(disallowedField("name", ref.Name, ref.Kind))
 		err.Add(disallowedField("mesh", ref.Mesh, ref.Kind))
 		err.Add(ValidateTags(validators.RootedAt("tags"), ref.Tags, ValidateTagsOpts{}))
+		err.Add(disallowedField("labels", ref.Labels, ref.Kind))
+		err.Add(disallowedField("namespace", ref.Namespace, ref.Kind))
+		err.Add(disallowedField("sectionName", ref.SectionName, ref.Kind))
 	case common_api.MeshService, common_api.MeshHTTPRoute:
-		err.Add(requiredField("name", ref.Name, ref.Kind))
 		err.Add(validateName(ref.Name, opts.AllowedInvalidNames))
 		err.Add(disallowedField("mesh", ref.Mesh, ref.Kind))
 		err.Add(disallowedField("tags", ref.Tags, ref.Kind))
 		err.Add(disallowedField("proxyTypes", ref.ProxyTypes, ref.Kind))
+		if len(ref.Labels) == 0 {
+			err.Add(requiredField("name", ref.Name, ref.Kind))
+		}
+		if len(ref.Labels) > 0 && (ref.Name != "" || ref.Namespace != "") {
+			err.AddViolation("labels", "either labels or name and namespace must be specified")
+		}
+		if len(ref.Labels) > 0 && ref.SectionName != "" {
+			err.AddViolation("sectionName", "sectionName should not be combined with labels")
+		}
 	case common_api.MeshServiceSubset, common_api.MeshGateway:
 		err.Add(requiredField("name", ref.Name, ref.Kind))
 		err.Add(validateName(ref.Name, opts.AllowedInvalidNames))
@@ -383,6 +401,21 @@ func ValidateTargetRef(
 		if ref.Kind == common_api.MeshGateway && len(ref.Tags) > 0 && !opts.GatewayListenerTagsAllowed {
 			err.Add(disallowedField("tags", ref.Tags, ref.Kind))
 		}
+		err.Add(disallowedField("labels", ref.Labels, ref.Kind))
+		err.Add(disallowedField("namespace", ref.Namespace, ref.Kind))
+		err.Add(disallowedField("sectionName", ref.SectionName, ref.Kind))
+	case common_api.MeshExternalService:
+		err.Add(validateName(ref.Name, opts.AllowedInvalidNames))
+		err.Add(disallowedField("mesh", ref.Mesh, ref.Kind))
+		err.Add(disallowedField("tags", ref.Tags, ref.Kind))
+		err.Add(disallowedField("proxyTypes", ref.ProxyTypes, ref.Kind))
+		if len(ref.Labels) == 0 {
+			err.Add(requiredField("name", ref.Name, ref.Kind))
+		}
+		if len(ref.Labels) > 0 && (ref.Name != "" || ref.Namespace != "") {
+			err.AddViolation("labels", "either labels or name must be specified")
+		}
+		err.Add(disallowedField("sectionName", ref.SectionName, ref.Kind))
 	}
 
 	return err
@@ -391,7 +424,7 @@ func ValidateTargetRef(
 func validateName(value string, allowedInvalidNames []string) validators.ValidationError {
 	var err validators.ValidationError
 
-	if !slices.Contains(allowedInvalidNames, value) && !nameCharacterSet.MatchString(value) {
+	if !slices.Contains(allowedInvalidNames, value) && !NameCharacterSet.MatchString(value) {
 		err.AddViolation(
 			"name",
 			"invalid characters: must consist of lower case alphanumeric characters, '-', '.' and '_'.",

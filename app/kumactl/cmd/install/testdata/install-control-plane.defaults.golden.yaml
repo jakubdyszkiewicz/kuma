@@ -36,7 +36,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: circuitbreakers.kuma.io
 spec:
   group: kuma.io
@@ -86,7 +86,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: containerpatches.kuma.io
 spec:
   group: kuma.io
@@ -200,7 +200,385 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: meshes.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: Mesh
+    listKind: MeshList
+    plural: meshes
+    singular: mesh
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          mesh:
+            description: |-
+              Mesh is the name of the Kuma mesh this resource belongs to.
+              It may be omitted for cluster-scoped resources.
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the specification of the Kuma Mesh resource.
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: meshexternalservices.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: MeshExternalService
+    listKind: MeshExternalServiceList
+    plural: meshexternalservices
+    singular: meshexternalservice
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the specification of the Kuma MeshExternalService
+              resource.
+            properties:
+              endpoints:
+                description: Endpoints defines a list of destinations to send traffic
+                  to.
+                items:
+                  properties:
+                    address:
+                      description: Address defines an address to which a user want
+                        to send a request. Is possible to provide `domain`, `ip`.
+                      example: example.com
+                      minLength: 1
+                      type: string
+                    port:
+                      description: Port of the endpoint
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                  required:
+                  - address
+                  - port
+                  type: object
+                type: array
+              extension:
+                description: Extension struct for a plugin configuration, in the presence
+                  of an extension `endpoints` and `tls` are not required anymore -
+                  it's up to the extension to validate them independently.
+                properties:
+                  config:
+                    description: Config freeform configuration for the extension.
+                    x-kubernetes-preserve-unknown-fields: true
+                  type:
+                    description: Type of the extension.
+                    type: string
+                required:
+                - config
+                - type
+                type: object
+              match:
+                description: Match defines traffic that should be routed through the
+                  sidecar.
+                properties:
+                  port:
+                    description: Port defines a port to which a user does request.
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                  protocol:
+                    default: tcp
+                    description: 'Protocol defines a protocol of the communication.
+                      Possible values: `tcp`, `grpc`, `http`, `http2`.'
+                    enum:
+                    - tcp
+                    - grpc
+                    - http
+                    - http2
+                    type: string
+                  type:
+                    default: HostnameGenerator
+                    description: Type of the match, only `HostnameGenerator` is available
+                      at the moment.
+                    enum:
+                    - HostnameGenerator
+                    type: string
+                required:
+                - port
+                type: object
+              tls:
+                description: Tls provides a TLS configuration when proxy is resposible
+                  for a TLS origination
+                properties:
+                  allowRenegotiation:
+                    default: false
+                    description: |-
+                      AllowRenegotiation defines if TLS sessions will allow renegotiation.
+                      Setting this to true is not recommended for security reasons.
+                    type: boolean
+                  enabled:
+                    default: false
+                    description: Enabled defines if proxy should originate TLS.
+                    type: boolean
+                  verification:
+                    description: Verification section for providing TLS verification
+                      details.
+                    properties:
+                      caCert:
+                        description: CaCert defines a certificate of CA.
+                        properties:
+                          inline:
+                            description: Data source is inline bytes.
+                            format: byte
+                            type: string
+                          inlineString:
+                            description: Data source is inline string`
+                            type: string
+                          secret:
+                            description: Data source is a secret with given Secret
+                              key.
+                            type: string
+                        type: object
+                      clientCert:
+                        description: ClientCert defines a certificate of a client.
+                        properties:
+                          inline:
+                            description: Data source is inline bytes.
+                            format: byte
+                            type: string
+                          inlineString:
+                            description: Data source is inline string`
+                            type: string
+                          secret:
+                            description: Data source is a secret with given Secret
+                              key.
+                            type: string
+                        type: object
+                      clientKey:
+                        description: ClientKey defines a client private key.
+                        properties:
+                          inline:
+                            description: Data source is inline bytes.
+                            format: byte
+                            type: string
+                          inlineString:
+                            description: Data source is inline string`
+                            type: string
+                          secret:
+                            description: Data source is a secret with given Secret
+                              key.
+                            type: string
+                        type: object
+                      mode:
+                        default: Secured
+                        description: Mode defines if proxy should skip verification,
+                          one of `SkipSAN`, `SkipCA`, `Secured`, `SkipAll`. Default
+                          `Secured`.
+                        enum:
+                        - SkipSAN
+                        - SkipCA
+                        - Secured
+                        - SkipAll
+                        type: string
+                      serverName:
+                        description: ServerName overrides the default Server Name
+                          Indicator set by Kuma.
+                        type: string
+                      subjectAltNames:
+                        description: SubjectAltNames list of names to verify in the
+                          certificate.
+                        items:
+                          properties:
+                            type:
+                              default: Exact
+                              description: 'Type specifies matching type, one of `Exact`,
+                                `Prefix`. Default: `Exact`'
+                              enum:
+                              - Exact
+                              - Prefix
+                              type: string
+                            value:
+                              description: Value to match.
+                              type: string
+                          required:
+                          - value
+                          type: object
+                        type: array
+                    type: object
+                  version:
+                    description: Version section for providing version specification.
+                    properties:
+                      max:
+                        default: TLSAuto
+                        description: Max defines maximum supported version. One of
+                          `TLSAuto`, `TLS10`, `TLS11`, `TLS12`, `TLS13`.
+                        enum:
+                        - TLSAuto
+                        - TLS10
+                        - TLS11
+                        - TLS12
+                        - TLS13
+                        type: string
+                      min:
+                        default: TLSAuto
+                        description: Min defines minimum supported version. One of
+                          `TLSAuto`, `TLS10`, `TLS11`, `TLS12`, `TLS13`.
+                        enum:
+                        - TLSAuto
+                        - TLS10
+                        - TLS11
+                        - TLS12
+                        - TLS13
+                        type: string
+                    type: object
+                type: object
+            required:
+            - match
+            type: object
+          status:
+            description: Status is the current status of the Kuma MeshExternalService
+              resource.
+            properties:
+              addresses:
+                description: Addresses section for generated domains
+                items:
+                  properties:
+                    hostname:
+                      type: string
+                    hostnameGeneratorRef:
+                      properties:
+                        coreName:
+                          type: string
+                      required:
+                      - coreName
+                      type: object
+                    origin:
+                      type: string
+                  type: object
+                type: array
+              hostnameGenerators:
+                items:
+                  properties:
+                    conditions:
+                      description: Conditions is an array of hostname generator conditions.
+                      items:
+                        properties:
+                          message:
+                            description: |-
+                              message is a human readable message indicating details about the transition.
+                              This may be an empty string.
+                            maxLength: 32768
+                            type: string
+                          reason:
+                            description: |-
+                              reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                              Producers of specific condition types may define expected values and meanings for this field,
+                              and whether the values are considered a guaranteed API.
+                              The value should be a CamelCase string.
+                              This field may not be empty.
+                            maxLength: 1024
+                            minLength: 1
+                            pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                            type: string
+                          status:
+                            description: status of the condition, one of True, False,
+                              Unknown.
+                            enum:
+                            - "True"
+                            - "False"
+                            - Unknown
+                            type: string
+                          type:
+                            description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                            maxLength: 316
+                            pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                            type: string
+                        required:
+                        - message
+                        - reason
+                        - status
+                        - type
+                        type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - type
+                      x-kubernetes-list-type: map
+                    hostnameGeneratorRef:
+                      properties:
+                        coreName:
+                          type: string
+                      required:
+                      - coreName
+                      type: object
+                  required:
+                  - hostnameGeneratorRef
+                  type: object
+                type: array
+              vip:
+                description: Vip section for allocated IP
+                properties:
+                  ip:
+                    description: Value allocated IP for a provided domain with `HostnameGenerator`
+                      type in a match section.
+                    type: string
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshfaultinjections.kuma.io
 spec:
   group: kuma.io
@@ -342,9 +720,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -353,6 +740,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -365,6 +757,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -390,9 +787,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -401,6 +807,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -413,6 +824,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -518,9 +934,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -529,6 +954,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -541,6 +971,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -553,8 +988,6 @@ spec:
                   - targetRef
                   type: object
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -565,7 +998,234 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: meshgatewayconfigs.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: MeshGatewayConfig
+    listKind: MeshGatewayConfigList
+    plural: meshgatewayconfigs
+    singular: meshgatewayconfig
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          MeshGatewayConfig holds the configuration of a MeshGateway. A
+          GatewayClass can refer to a MeshGatewayConfig via parametersRef.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MeshGatewayConfigSpec specifies the options available for
+              a Kuma MeshGateway.
+            properties:
+              crossMesh:
+                description: |-
+                  CrossMesh specifies whether listeners configured by this gateway are
+                  cross mesh listeners.
+                type: boolean
+              podTemplate:
+                description: PodTemplate configures the Pod owned by this config.
+                properties:
+                  metadata:
+                    description: Metadata holds metadata configuration for a Service.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: Annotations holds annotations to be set on an
+                          object.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Labels holds labels to be set on an objects.
+                        type: object
+                    type: object
+                  spec:
+                    description: Spec holds some customizable fields of a Pod.
+                    properties:
+                      container:
+                        description: Container corresponds to PodSpec.Container
+                        properties:
+                          securityContext:
+                            description: ContainerSecurityContext corresponds to PodSpec.Container.SecurityContext
+                            properties:
+                              readOnlyRootFilesystem:
+                                description: ReadOnlyRootFilesystem corresponds to
+                                  PodSpec.Container.SecurityContext.ReadOnlyRootFilesystem
+                                type: boolean
+                            type: object
+                        type: object
+                      securityContext:
+                        description: PodSecurityContext corresponds to PodSpec.SecurityContext
+                        properties:
+                          fsGroup:
+                            description: FSGroup corresponds to PodSpec.SecurityContext.FSGroup
+                            format: int64
+                            type: integer
+                        type: object
+                      serviceAccountName:
+                        description: ServiceAccountName corresponds to PodSpec.ServiceAccountName.
+                        type: string
+                    type: object
+                type: object
+              replicas:
+                default: 1
+                description: |-
+                  Replicas is the number of dataplane proxy replicas to create. For
+                  now this is a fixed number, but in the future it could be
+                  automatically scaled based on metrics.
+                format: int32
+                minimum: 1
+                type: integer
+              resources:
+                description: |-
+                  Resources specifies the compute resources for the proxy container.
+                  The default can be set in the control plane config.
+                properties:
+                  claims:
+                    description: |-
+                      Claims lists the names of resources, defined in spec.resourceClaims,
+                      that are used by this container.
+
+                      This is an alpha field and requires enabling the
+                      DynamicResourceAllocation feature gate.
+
+                      This field is immutable. It can only be set for containers.
+                    items:
+                      description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                      properties:
+                        name:
+                          description: |-
+                            Name must match the name of one entry in pod.spec.resourceClaims of
+                            the Pod where this field is used. It makes that resource available
+                            inside a container.
+                          type: string
+                        request:
+                          description: |-
+                            Request is the name chosen for a request in the referenced claim.
+                            If empty, everything from the claim is made available, otherwise
+                            only the result of this request.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Limits describes the maximum amount of compute resources allowed.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Requests describes the minimum amount of compute resources required.
+                      If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                      otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                type: object
+              serviceTemplate:
+                description: ServiceTemplate configures the Service owned by this
+                  config.
+                properties:
+                  metadata:
+                    description: Metadata holds metadata configuration for a Service.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: Annotations holds annotations to be set on an
+                          object.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Labels holds labels to be set on an objects.
+                        type: object
+                    type: object
+                  spec:
+                    description: Spec holds some customizable fields of a Service.
+                    properties:
+                      loadBalancerIP:
+                        description: LoadBalancerIP corresponds to ServiceSpec.LoadBalancerIP.
+                        type: string
+                    type: object
+                type: object
+              serviceType:
+                default: LoadBalancer
+                description: |-
+                  ServiceType specifies the type of managed Service that will be
+                  created to expose the dataplane proxies to traffic from outside
+                  the cluster. The ports to expose will be taken from the matching Gateway
+                  resource. If there is no matching Gateway, the managed Service will
+                  be deleted.
+                enum:
+                - LoadBalancer
+                - ClusterIP
+                - NodePort
+                type: string
+              tags:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Tags specifies a set of Kuma tags that are included in the
+                  MeshGatewayInstance and thus propagated to every Dataplane generated to
+                  serve the MeshGateway.
+                  These tags should include a maximum of one `kuma.io/service` tag.
+                type: object
+            type: object
+          status:
+            description: |-
+              MeshGatewayConfigStatus holds information about the status of the gateway
+              instance.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshgatewayinstances.kuma.io
 spec:
   group: kuma.io
@@ -671,10 +1331,8 @@ spec:
                       Claims lists the names of resources, defined in spec.resourceClaims,
                       that are used by this container.
 
-
                       This is an alpha field and requires enabling the
                       DynamicResourceAllocation feature gate.
-
 
                       This field is immutable. It can only be set for containers.
                     items:
@@ -685,6 +1343,12 @@ spec:
                             Name must match the name of one entry in pod.spec.resourceClaims of
                             the Pod where this field is used. It makes that resource available
                             inside a container.
+                          type: string
+                        request:
+                          description: |-
+                            Request is the name chosen for a request in the referenced claim.
+                            If empty, everything from the claim is made available, otherwise
+                            only the result of this request.
                           type: string
                       required:
                       - name
@@ -763,8 +1427,8 @@ spec:
                   type: string
                 description: |-
                   Tags specifies the Kuma tags that are propagated to the managed
-                  dataplane proxies. These tags should include exactly one
-                  `kuma.io/service` tag, and should match exactly one Gateway
+                  dataplane proxies. These tags should not include `kuma.io/service` tag
+                  since is auto-generated, and should match exactly one Gateway
                   resource.
                 type: object
             type: object
@@ -776,16 +1440,8 @@ spec:
               conditions:
                 description: Conditions is an array of gateway instance conditions.
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -826,12 +1482,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -893,8 +1544,6 @@ spec:
                                     CamelCase names
                                   - cloud provider specific error values must have names that comply with the
                                     format foo.example.com/CamelCase.
-                                  ---
-                                  The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                                 maxLength: 316
                                 pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                                 type: string
@@ -904,12 +1553,12 @@ spec:
                                 format: int32
                                 type: integer
                               protocol:
-                                default: TCP
                                 description: |-
                                   Protocol is the protocol of the service port of which status is recorded here
                                   The supported values are: "TCP", "UDP", "SCTP"
                                 type: string
                             required:
+                            - error
                             - port
                             - protocol
                             type: object
@@ -917,6 +1566,7 @@ spec:
                           x-kubernetes-list-type: atomic
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                 type: object
             type: object
         type: object
@@ -929,7 +1579,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshgatewayroutes.kuma.io
 spec:
   group: kuma.io
@@ -979,7 +1629,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshgateways.kuma.io
 spec:
   group: kuma.io
@@ -1029,7 +1679,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshhealthchecks.kuma.io
 spec:
   group: kuma.io
@@ -1086,9 +1736,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -1097,6 +1756,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -1109,6 +1773,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -1328,9 +1997,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -1339,6 +2017,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -1351,6 +2034,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -1363,8 +2051,6 @@ spec:
                   - targetRef
                   type: object
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -1375,7 +2061,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshhttproutes.kuma.io
 spec:
   group: kuma.io
@@ -1432,9 +2118,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -1443,6 +2138,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -1455,6 +2155,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -1500,9 +2205,18 @@ spec:
                                       - MeshSubset
                                       - MeshGateway
                                       - MeshService
+                                      - MeshExternalService
+                                      - MeshMultiZoneService
                                       - MeshServiceSubset
                                       - MeshHTTPRoute
                                       type: string
+                                    labels:
+                                      additionalProperties:
+                                        type: string
+                                      description: |-
+                                        Labels are used to select group of MeshServices that match labels. Either Labels or
+                                        Name and Namespace can be used.
+                                      type: object
                                     mesh:
                                       description: Mesh is reserved for future use
                                         to identify cross mesh resources.
@@ -1511,6 +2225,11 @@ spec:
                                       description: |-
                                         Name of the referenced resource. Can only be used with kinds: `MeshService`,
                                         `MeshServiceSubset` and `MeshGatewayRoute`
+                                      type: string
+                                    namespace:
+                                      description: |-
+                                        Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                                        will be targeted.
                                       type: string
                                     port:
                                       description: Port is only supported when this
@@ -1528,6 +2247,11 @@ spec:
                                         type: string
                                       minItems: 1
                                       type: array
+                                    sectionName:
+                                      description: |-
+                                        SectionName is used to target specific section of resource.
+                                        For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                                      type: string
                                     tags:
                                       additionalProperties:
                                         type: string
@@ -1597,7 +2321,8 @@ spec:
                                     requestMirror:
                                       properties:
                                         backendRef:
-                                          description: TODO forbid weight
+                                          description: BackendRef defines where to
+                                            forward traffic.
                                           properties:
                                             kind:
                                               description: Kind of the referenced
@@ -1607,9 +2332,18 @@ spec:
                                               - MeshSubset
                                               - MeshGateway
                                               - MeshService
+                                              - MeshExternalService
+                                              - MeshMultiZoneService
                                               - MeshServiceSubset
                                               - MeshHTTPRoute
                                               type: string
+                                            labels:
+                                              additionalProperties:
+                                                type: string
+                                              description: |-
+                                                Labels are used to select group of MeshServices that match labels. Either Labels or
+                                                Name and Namespace can be used.
+                                              type: object
                                             mesh:
                                               description: Mesh is reserved for future
                                                 use to identify cross mesh resources.
@@ -1618,6 +2352,11 @@ spec:
                                               description: |-
                                                 Name of the referenced resource. Can only be used with kinds: `MeshService`,
                                                 `MeshServiceSubset` and `MeshGatewayRoute`
+                                              type: string
+                                            namespace:
+                                              description: |-
+                                                Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                                                will be targeted.
                                               type: string
                                             port:
                                               description: Port is only supported
@@ -1636,6 +2375,11 @@ spec:
                                                 type: string
                                               minItems: 1
                                               type: array
+                                            sectionName:
+                                              description: |-
+                                                SectionName is used to target specific section of resource.
+                                                For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                                              type: string
                                             tags:
                                               additionalProperties:
                                                 type: string
@@ -1666,7 +2410,6 @@ spec:
                                             PreciseHostname is the fully qualified domain name of a network host. This
                                             matches the RFC 1123 definition of a hostname with 1 notable exception that
                                             numeric IP addresses are not allowed.
-
 
                                             Note that as per RFC1035 and RFC1123, a *label* must consist of lower case
                                             alphanumeric characters or '-', and must start and end with an alphanumeric
@@ -1924,9 +2667,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -1935,6 +2687,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -1947,6 +2704,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -1967,7 +2729,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshinsights.kuma.io
 spec:
   group: kuma.io
@@ -2017,7 +2779,57 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: dataplaneinsights.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: DataplaneInsight
+    listKind: DataplaneInsightList
+    plural: dataplaneinsights
+    singular: dataplaneinsight
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          mesh:
+            description: |-
+              Mesh is the name of the Kuma mesh this resource belongs to.
+              It may be omitted for cluster-scoped resources.
+            type: string
+          metadata:
+            type: object
+          status:
+            description: Status is the status the Kuma resource.
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshloadbalancingstrategies.kuma.io
 spec:
   group: kuma.io
@@ -2075,9 +2887,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -2086,6 +2907,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -2098,6 +2924,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -2506,9 +3337,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -2517,6 +3357,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -2529,6 +3374,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -2541,8 +3391,6 @@ spec:
                   - targetRef
                   type: object
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -2553,7 +3401,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshmetrics.kuma.io
 spec:
   group: kuma.io
@@ -2705,9 +3553,8 @@ spec:
                           published.
                         properties:
                           appendProfiles:
-                            description: |-
-                              AppendProfiles allows to combine the metrics from multiple predefined profiles.
-                              Currently, it's only possible to define one profile.
+                            description: AppendProfiles allows to combine the metrics
+                              from multiple predefined profiles.
                             items:
                               properties:
                                 name:
@@ -2721,7 +3568,6 @@ spec:
                               required:
                               - name
                               type: object
-                            maxItems: 1
                             type: array
                           exclude:
                             description: |-
@@ -2787,9 +3633,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -2798,6 +3653,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -2810,6 +3670,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -2818,8 +3683,6 @@ spec:
                       `MeshSubset` and `MeshServiceSubset`
                     type: object
                 type: object
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -2830,7 +3693,365 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: meshmultizoneservices.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: MeshMultiZoneService
+    listKind: MeshMultiZoneServiceList
+    plural: meshmultizoneservices
+    singular: meshmultizoneservice
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the specification of the Kuma MeshMultiZoneService
+              resource.
+            properties:
+              ports:
+                description: Ports is a list of ports from selected MeshServices
+                items:
+                  properties:
+                    appProtocol:
+                      default: tcp
+                      description: Protocol identifies a protocol supported by a service.
+                      type: string
+                    name:
+                      type: string
+                    port:
+                      format: int32
+                      type: integer
+                  required:
+                  - port
+                  type: object
+                minItems: 1
+                type: array
+              selector:
+                description: Selector is a way to select multiple MeshServices
+                properties:
+                  meshService:
+                    description: MeshService selects MeshServices
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: MatchLabels matches multiple MeshServices by
+                          labels
+                        type: object
+                    required:
+                    - matchLabels
+                    type: object
+                required:
+                - meshService
+                type: object
+            required:
+            - selector
+            type: object
+          status:
+            description: Status is the current status of the Kuma MeshMultiZoneService
+              resource.
+            properties:
+              addresses:
+                description: Addresses is a list of addresses generated by HostnameGenerator
+                items:
+                  properties:
+                    hostname:
+                      type: string
+                    hostnameGeneratorRef:
+                      properties:
+                        coreName:
+                          type: string
+                      required:
+                      - coreName
+                      type: object
+                    origin:
+                      type: string
+                  type: object
+                type: array
+              hostnameGenerators:
+                description: Status of hostnames generator applied on this resource
+                items:
+                  properties:
+                    conditions:
+                      description: Conditions is an array of hostname generator conditions.
+                      items:
+                        properties:
+                          message:
+                            description: |-
+                              message is a human readable message indicating details about the transition.
+                              This may be an empty string.
+                            maxLength: 32768
+                            type: string
+                          reason:
+                            description: |-
+                              reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                              Producers of specific condition types may define expected values and meanings for this field,
+                              and whether the values are considered a guaranteed API.
+                              The value should be a CamelCase string.
+                              This field may not be empty.
+                            maxLength: 1024
+                            minLength: 1
+                            pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                            type: string
+                          status:
+                            description: status of the condition, one of True, False,
+                              Unknown.
+                            enum:
+                            - "True"
+                            - "False"
+                            - Unknown
+                            type: string
+                          type:
+                            description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                            maxLength: 316
+                            pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                            type: string
+                        required:
+                        - message
+                        - reason
+                        - status
+                        - type
+                        type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - type
+                      x-kubernetes-list-type: map
+                    hostnameGeneratorRef:
+                      properties:
+                        coreName:
+                          type: string
+                      required:
+                      - coreName
+                      type: object
+                  required:
+                  - hostnameGeneratorRef
+                  type: object
+                type: array
+              meshServices:
+                description: MeshServices is a list of matched MeshServices
+                items:
+                  properties:
+                    mesh:
+                      type: string
+                    name:
+                      description: Name is a core name of MeshService
+                      type: string
+                    namespace:
+                      type: string
+                    zone:
+                      type: string
+                  required:
+                  - mesh
+                  - name
+                  - namespace
+                  - zone
+                  type: object
+                type: array
+              vips:
+                description: VIPs is a list of assigned Kuma VIPs.
+                items:
+                  properties:
+                    ip:
+                      type: string
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: meshpassthroughs.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: MeshPassthrough
+    listKind: MeshPassthroughList
+    plural: meshpassthroughs
+    singular: meshpassthrough
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.targetRef.kind
+      name: TargetRef Kind
+      type: string
+    - jsonPath: .spec.targetRef.name
+      name: TargetRef Name
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the specification of the Kuma MeshPassthrough resource.
+            properties:
+              default:
+                description: MeshPassthrough configuration.
+                properties:
+                  appendMatch:
+                    description: AppendMatch is a list of destinations that should
+                      be allowed through the sidecar.
+                    items:
+                      properties:
+                        port:
+                          description: Port defines the port to which a user makes
+                            a request.
+                          type: integer
+                        protocol:
+                          default: tcp
+                          description: 'Protocol defines the communication protocol.
+                            Possible values: `tcp`, `tls`, `grpc`, `http`, `http2`.'
+                          enum:
+                          - tcp
+                          - tls
+                          - grpc
+                          - http
+                          - http2
+                          type: string
+                        type:
+                          description: Type of the match, one of `Domain`, `IP` or
+                            `CIDR` is available.
+                          enum:
+                          - Domain
+                          - IP
+                          - CIDR
+                          type: string
+                        value:
+                          description: Value for the specified Type.
+                          type: string
+                      type: object
+                    type: array
+                  passthroughMode:
+                    default: None
+                    description: |-
+                      Defines the passthrough behavior. Possible values: `All`, `None`, `Matched`
+                      When `All` or `None` `appendMatch` has no effect.
+                    enum:
+                    - All
+                    - Matched
+                    - None
+                    type: string
+                type: object
+              targetRef:
+                description: |-
+                  TargetRef is a reference to the resource the policy takes an effect on.
+                  The resource could be either a real store object or virtual resource
+                  defined in-place.
+                properties:
+                  kind:
+                    description: Kind of the referenced resource
+                    enum:
+                    - Mesh
+                    - MeshSubset
+                    - MeshGateway
+                    - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
+                    - MeshServiceSubset
+                    - MeshHTTPRoute
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
+                  mesh:
+                    description: Mesh is reserved for future use to identify cross
+                      mesh resources.
+                    type: string
+                  name:
+                    description: |-
+                      Name of the referenced resource. Can only be used with kinds: `MeshService`,
+                      `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
+                    type: string
+                  proxyTypes:
+                    description: |-
+                      ProxyTypes specifies the data plane types that are subject to the policy. When not specified,
+                      all data plane types are targeted by the policy.
+                    items:
+                      enum:
+                      - Sidecar
+                      - Gateway
+                      type: string
+                    minItems: 1
+                    type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
+                  tags:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Tags used to select a subset of proxies by tags. Can only be used with kinds
+                      `MeshSubset` and `MeshServiceSubset`
+                    type: object
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshproxypatches.kuma.io
 spec:
   group: kuma.io
@@ -2932,7 +4153,6 @@ spec:
                                   description: |-
                                     Origin is the name of the component or plugin that generated the resource.
 
-
                                     Here is the list of well-known origins:
                                     inbound - resources generated for handling incoming traffic.
                                     outbound - resources generated for handling outgoing traffic.
@@ -2942,7 +4162,6 @@ spec:
                                     ingress - resources generated for Zone Ingress.
                                     egress - resources generated for Zone Egress.
                                     gateway - resources generated for MeshGateway.
-
 
                                     The list is not complete, because policy plugins can introduce new resources.
                                     For example MeshTrace plugin can create Cluster with "mesh-trace" origin.
@@ -3020,7 +4239,6 @@ spec:
                                   description: |-
                                     Origin is the name of the component or plugin that generated the resource.
 
-
                                     Here is the list of well-known origins:
                                     inbound - resources generated for handling incoming traffic.
                                     outbound - resources generated for handling outgoing traffic.
@@ -3030,7 +4248,6 @@ spec:
                                     ingress - resources generated for Zone Ingress.
                                     egress - resources generated for Zone Egress.
                                     gateway - resources generated for MeshGateway.
-
 
                                     The list is not complete, because policy plugins can introduce new resources.
                                     For example MeshTrace plugin can create Cluster with "mesh-trace" origin.
@@ -3101,7 +4318,6 @@ spec:
                                   description: |-
                                     Origin is the name of the component or plugin that generated the resource.
 
-
                                     Here is the list of well-known origins:
                                     inbound - resources generated for handling incoming traffic.
                                     outbound - resources generated for handling outgoing traffic.
@@ -3111,7 +4327,6 @@ spec:
                                     ingress - resources generated for Zone Ingress.
                                     egress - resources generated for Zone Egress.
                                     gateway - resources generated for MeshGateway.
-
 
                                     The list is not complete, because policy plugins can introduce new resources.
                                     For example MeshTrace plugin can create Cluster with "mesh-trace" origin.
@@ -3193,7 +4408,6 @@ spec:
                                   description: |-
                                     Origin is the name of the component or plugin that generated the resource.
 
-
                                     Here is the list of well-known origins:
                                     inbound - resources generated for handling incoming traffic.
                                     outbound - resources generated for handling outgoing traffic.
@@ -3203,7 +4417,6 @@ spec:
                                     ingress - resources generated for Zone Ingress.
                                     egress - resources generated for Zone Egress.
                                     gateway - resources generated for MeshGateway.
-
 
                                     The list is not complete, because policy plugins can introduce new resources.
                                     For example MeshTrace plugin can create Cluster with "mesh-trace" origin.
@@ -3275,7 +4488,6 @@ spec:
                                   description: |-
                                     Origin is the name of the component or plugin that generated the resource.
 
-
                                     Here is the list of well-known origins:
                                     inbound - resources generated for handling incoming traffic.
                                     outbound - resources generated for handling outgoing traffic.
@@ -3285,7 +4497,6 @@ spec:
                                     ingress - resources generated for Zone Ingress.
                                     egress - resources generated for Zone Egress.
                                     gateway - resources generated for MeshGateway.
-
 
                                     The list is not complete, because policy plugins can introduce new resources.
                                     For example MeshTrace plugin can create Cluster with "mesh-trace" origin.
@@ -3328,9 +4539,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -3339,6 +4559,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -3351,6 +4576,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -3361,7 +4591,6 @@ spec:
                 type: object
             required:
             - default
-            - targetRef
             type: object
         type: object
     served: true
@@ -3372,57 +4601,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
-  name: dataplaneinsights.kuma.io
-spec:
-  group: kuma.io
-  names:
-    categories:
-    - kuma
-    kind: DataplaneInsight
-    listKind: DataplaneInsightList
-    plural: dataplaneinsights
-    singular: dataplaneinsight
-  scope: Namespaced
-  versions:
-  - name: v1alpha1
-    schema:
-      openAPIV3Schema:
-        properties:
-          apiVersion:
-            description: |-
-              APIVersion defines the versioned schema of this representation of an object.
-              Servers should convert recognized schemas to the latest internal value, and
-              may reject unrecognized values.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-            type: string
-          kind:
-            description: |-
-              Kind is a string value representing the REST resource this object represents.
-              Servers may infer this from the endpoint the client submits requests to.
-              Cannot be updated.
-              In CamelCase.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-            type: string
-          mesh:
-            description: |-
-              Mesh is the name of the Kuma mesh this resource belongs to.
-              It may be omitted for cluster-scoped resources.
-            type: string
-          metadata:
-            type: object
-          status:
-            description: Status is the status the Kuma resource.
-            x-kubernetes-preserve-unknown-fields: true
-        type: object
-    served: true
-    storage: true
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshratelimits.kuma.io
 spec:
   group: kuma.io
@@ -3482,7 +4661,7 @@ spec:
                           properties:
                             http:
                               description: |-
-                                LocalHTTP defines confguration of local HTTP rate limiting
+                                LocalHTTP defines configuration of local HTTP rate limiting
                                 https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/local_rate_limit_filter
                               properties:
                                 disabled:
@@ -3603,9 +4782,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -3614,6 +4802,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -3626,6 +4819,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -3651,9 +4849,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -3662,6 +4869,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -3674,6 +4886,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -3698,7 +4915,7 @@ spec:
                           properties:
                             http:
                               description: |-
-                                LocalHTTP defines confguration of local HTTP rate limiting
+                                LocalHTTP defines configuration of local HTTP rate limiting
                                 https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/local_rate_limit_filter
                               properties:
                                 disabled:
@@ -3819,9 +5036,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -3830,6 +5056,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -3842,6 +5073,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -3854,8 +5090,6 @@ spec:
                   - targetRef
                   type: object
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -3866,7 +5100,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshretries.kuma.io
 spec:
   group: kuma.io
@@ -3923,9 +5157,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -3934,6 +5177,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -3946,6 +5194,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -4290,9 +5543,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -4301,6 +5563,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -4313,6 +5580,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -4325,8 +5597,6 @@ spec:
                   - targetRef
                   type: object
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -4337,7 +5607,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshservices.kuma.io
 spec:
   group: kuma.io
@@ -4374,34 +5644,65 @@ spec:
           spec:
             description: Spec is the specification of the Kuma MeshService resource.
             properties:
+              identities:
+                items:
+                  properties:
+                    type:
+                      enum:
+                      - ServiceTag
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - type
+                  - value
+                  type: object
+                type: array
               ports:
                 items:
                   properties:
-                    port:
-                      format: int32
-                      type: integer
-                    protocol:
+                    appProtocol:
                       default: tcp
                       description: Protocol identifies a protocol supported by a service.
                       type: string
-                    targetPort:
+                    name:
+                      type: string
+                    port:
                       format: int32
                       type: integer
+                    targetPort:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
                   required:
                   - port
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:
                 - port
-                - protocol
+                - appProtocol
                 x-kubernetes-list-type: map
               selector:
                 properties:
+                  dataplaneRef:
+                    properties:
+                      name:
+                        type: string
+                    type: object
                   dataplaneTags:
                     additionalProperties:
                       type: string
                     type: object
                 type: object
+              state:
+                description: |-
+                  State of MeshService. Available if there is at least one healthy endpoint. Otherwise, Unavailable.
+                  It's used for cross zone communication to check if we should send traffic to it, when MeshService is aggregated into MeshMultiZoneService.
+                enum:
+                - Available
+                - Unavailable
+                type: string
             type: object
           status:
             description: Status is the current status of the Kuma MeshService resource.
@@ -4411,6 +5712,88 @@ spec:
                   properties:
                     hostname:
                       type: string
+                    hostnameGeneratorRef:
+                      properties:
+                        coreName:
+                          type: string
+                      required:
+                      - coreName
+                      type: object
+                    origin:
+                      type: string
+                  type: object
+                type: array
+              dataplaneProxies:
+                description: Data plane proxies statistics selected by this MeshService.
+                properties:
+                  connected:
+                    description: Number of data plane proxies connected to the zone
+                      control plane
+                    type: integer
+                  healthy:
+                    description: Number of data plane proxies with all healthy inbounds
+                      selected by this MeshService.
+                    type: integer
+                  total:
+                    description: Total number of data plane proxies.
+                    type: integer
+                type: object
+              hostnameGenerators:
+                items:
+                  properties:
+                    conditions:
+                      description: Conditions is an array of hostname generator conditions.
+                      items:
+                        properties:
+                          message:
+                            description: |-
+                              message is a human readable message indicating details about the transition.
+                              This may be an empty string.
+                            maxLength: 32768
+                            type: string
+                          reason:
+                            description: |-
+                              reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                              Producers of specific condition types may define expected values and meanings for this field,
+                              and whether the values are considered a guaranteed API.
+                              The value should be a CamelCase string.
+                              This field may not be empty.
+                            maxLength: 1024
+                            minLength: 1
+                            pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                            type: string
+                          status:
+                            description: status of the condition, one of True, False,
+                              Unknown.
+                            enum:
+                            - "True"
+                            - "False"
+                            - Unknown
+                            type: string
+                          type:
+                            description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                            maxLength: 316
+                            pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                            type: string
+                        required:
+                        - message
+                        - reason
+                        - status
+                        - type
+                        type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - type
+                      x-kubernetes-list-type: map
+                    hostnameGeneratorRef:
+                      properties:
+                        coreName:
+                          type: string
+                      required:
+                      - coreName
+                      type: object
+                  required:
+                  - hostnameGeneratorRef
                   type: object
                 type: array
               tls:
@@ -4437,7 +5820,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshtcproutes.kuma.io
 spec:
   group: kuma.io
@@ -4494,9 +5877,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -4505,6 +5897,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -4517,6 +5914,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -4554,9 +5956,18 @@ spec:
                                       - MeshSubset
                                       - MeshGateway
                                       - MeshService
+                                      - MeshExternalService
+                                      - MeshMultiZoneService
                                       - MeshServiceSubset
                                       - MeshHTTPRoute
                                       type: string
+                                    labels:
+                                      additionalProperties:
+                                        type: string
+                                      description: |-
+                                        Labels are used to select group of MeshServices that match labels. Either Labels or
+                                        Name and Namespace can be used.
+                                      type: object
                                     mesh:
                                       description: Mesh is reserved for future use
                                         to identify cross mesh resources.
@@ -4565,6 +5976,11 @@ spec:
                                       description: |-
                                         Name of the referenced resource. Can only be used with kinds: `MeshService`,
                                         `MeshServiceSubset` and `MeshGatewayRoute`
+                                      type: string
+                                    namespace:
+                                      description: |-
+                                        Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                                        will be targeted.
                                       type: string
                                     port:
                                       description: Port is only supported when this
@@ -4582,6 +5998,11 @@ spec:
                                         type: string
                                       minItems: 1
                                       type: array
+                                    sectionName:
+                                      description: |-
+                                        SectionName is used to target specific section of resource.
+                                        For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                                      type: string
                                     tags:
                                       additionalProperties:
                                         type: string
@@ -4616,9 +6037,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -4627,6 +6057,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -4639,6 +6074,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -4652,8 +6092,6 @@ spec:
                   type: object
                 minItems: 1
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -4664,7 +6102,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshtimeouts.kuma.io
 spec:
   group: kuma.io
@@ -4777,9 +6215,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -4788,6 +6235,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -4800,6 +6252,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -4825,9 +6282,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -4836,6 +6302,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -4848,6 +6319,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -4925,9 +6401,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -4936,6 +6421,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -4948,6 +6438,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -4960,8 +6455,6 @@ spec:
                   - targetRef
                   type: object
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -4972,7 +6465,316 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: dataplanes.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: Dataplane
+    listKind: DataplaneList
+    plural: dataplanes
+    singular: dataplane
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Service tag of the first inbound
+      jsonPath: .spec.networking.inbound[0].tags['kuma\.io/service']
+      name: kuma.io/service
+      type: string
+    - description: Service tag of the second inbound
+      jsonPath: .spec.networking.inbound[1].tags['kuma\.io/service']
+      name: kuma.io/service
+      type: string
+    - description: Service tag of the third inbound
+      jsonPath: .spec.networking.inbound[2].tags['kuma\.io/service']
+      name: kuma.io/service
+      priority: 1
+      type: string
+    - description: Service tag of the fourth inbound
+      jsonPath: .spec.networking.inbound[3].tags['kuma\.io/service']
+      name: kuma.io/service
+      priority: 1
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          mesh:
+            description: |-
+              Mesh is the name of the Kuma mesh this resource belongs to.
+              It may be omitted for cluster-scoped resources.
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the specification of the Kuma Dataplane resource.
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: meshtlses.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: MeshTLS
+    listKind: MeshTLSList
+    plural: meshtlses
+    singular: meshtls
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.targetRef.kind
+      name: TargetRef Kind
+      type: string
+    - jsonPath: .spec.targetRef.name
+      name: TargetRef Name
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the specification of the Kuma MeshTLS resource.
+            properties:
+              from:
+                description: From list makes a match between clients and corresponding
+                  configurations
+                items:
+                  properties:
+                    default:
+                      description: |-
+                        Default is a configuration specific to the group of clients referenced in
+                        'targetRef'
+                      properties:
+                        mode:
+                          description: Mode defines the behavior of inbound listeners
+                            with regard to traffic encryption.
+                          enum:
+                          - Permissive
+                          - Strict
+                          type: string
+                        tlsCiphers:
+                          description: TlsCiphers section for providing ciphers specification.
+                          items:
+                            enum:
+                            - ECDHE-ECDSA-AES128-GCM-SHA256
+                            - ECDHE-ECDSA-AES256-GCM-SHA384
+                            - ECDHE-ECDSA-CHACHA20-POLY1305
+                            - ECDHE-RSA-AES128-GCM-SHA256
+                            - ECDHE-RSA-AES256-GCM-SHA384
+                            - ECDHE-RSA-CHACHA20-POLY1305
+                            type: string
+                          type: array
+                        tlsVersion:
+                          description: Version section for providing version specification.
+                          properties:
+                            max:
+                              default: TLSAuto
+                              description: Max defines maximum supported version.
+                                One of `TLSAuto`, `TLS10`, `TLS11`, `TLS12`, `TLS13`.
+                              enum:
+                              - TLSAuto
+                              - TLS10
+                              - TLS11
+                              - TLS12
+                              - TLS13
+                              type: string
+                            min:
+                              default: TLSAuto
+                              description: Min defines minimum supported version.
+                                One of `TLSAuto`, `TLS10`, `TLS11`, `TLS12`, `TLS13`.
+                              enum:
+                              - TLSAuto
+                              - TLS10
+                              - TLS11
+                              - TLS12
+                              - TLS13
+                              type: string
+                          type: object
+                      type: object
+                    targetRef:
+                      description: |-
+                        TargetRef is a reference to the resource that represents a group of
+                        clients.
+                      properties:
+                        kind:
+                          description: Kind of the referenced resource
+                          enum:
+                          - Mesh
+                          - MeshSubset
+                          - MeshGateway
+                          - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
+                          - MeshServiceSubset
+                          - MeshHTTPRoute
+                          type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
+                        mesh:
+                          description: Mesh is reserved for future use to identify
+                            cross mesh resources.
+                          type: string
+                        name:
+                          description: |-
+                            Name of the referenced resource. Can only be used with kinds: `MeshService`,
+                            `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
+                          type: string
+                        proxyTypes:
+                          description: |-
+                            ProxyTypes specifies the data plane types that are subject to the policy. When not specified,
+                            all data plane types are targeted by the policy.
+                          items:
+                            enum:
+                            - Sidecar
+                            - Gateway
+                            type: string
+                          minItems: 1
+                          type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
+                        tags:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Tags used to select a subset of proxies by tags. Can only be used with kinds
+                            `MeshSubset` and `MeshServiceSubset`
+                          type: object
+                      type: object
+                  required:
+                  - targetRef
+                  type: object
+                type: array
+              targetRef:
+                description: |-
+                  TargetRef is a reference to the resource the policy takes an effect on.
+                  The resource could be either a real store object or virtual resource
+                  defined in-place.
+                properties:
+                  kind:
+                    description: Kind of the referenced resource
+                    enum:
+                    - Mesh
+                    - MeshSubset
+                    - MeshGateway
+                    - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
+                    - MeshServiceSubset
+                    - MeshHTTPRoute
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
+                  mesh:
+                    description: Mesh is reserved for future use to identify cross
+                      mesh resources.
+                    type: string
+                  name:
+                    description: |-
+                      Name of the referenced resource. Can only be used with kinds: `MeshService`,
+                      `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
+                    type: string
+                  proxyTypes:
+                    description: |-
+                      ProxyTypes specifies the data plane types that are subject to the policy. When not specified,
+                      all data plane types are targeted by the policy.
+                    items:
+                      enum:
+                      - Sidecar
+                      - Gateway
+                      type: string
+                    minItems: 1
+                    type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
+                  tags:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Tags used to select a subset of proxies by tags. Can only be used with kinds
+                      `MeshSubset` and `MeshServiceSubset`
+                    type: object
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshtraces.kuma.io
 spec:
   group: kuma.io
@@ -5195,9 +6997,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -5206,6 +7017,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -5218,6 +7034,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -5226,8 +7047,6 @@ spec:
                       `MeshSubset` and `MeshServiceSubset`
                     type: object
                 type: object
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -5238,7 +7057,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshtrafficpermissions.kuma.io
 spec:
   group: kuma.io
@@ -5314,9 +7133,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -5325,6 +7153,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -5337,6 +7170,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -5362,9 +7200,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -5373,6 +7220,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -5385,6 +7237,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -5393,8 +7250,6 @@ spec:
                       `MeshSubset` and `MeshServiceSubset`
                     type: object
                 type: object
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -5405,7 +7260,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: proxytemplates.kuma.io
 spec:
   group: kuma.io
@@ -5455,7 +7310,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: ratelimits.kuma.io
 spec:
   group: kuma.io
@@ -5505,7 +7360,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: retries.kuma.io
 spec:
   group: kuma.io
@@ -5555,77 +7410,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
-  name: dataplanes.kuma.io
-spec:
-  group: kuma.io
-  names:
-    categories:
-    - kuma
-    kind: Dataplane
-    listKind: DataplaneList
-    plural: dataplanes
-    singular: dataplane
-  scope: Namespaced
-  versions:
-  - additionalPrinterColumns:
-    - description: Service tag of the first inbound
-      jsonPath: .spec.networking.inbound[0].tags['kuma\.io/service']
-      name: kuma.io/service
-      type: string
-    - description: Service tag of the second inbound
-      jsonPath: .spec.networking.inbound[1].tags['kuma\.io/service']
-      name: kuma.io/service
-      type: string
-    - description: Service tag of the third inbound
-      jsonPath: .spec.networking.inbound[2].tags['kuma\.io/service']
-      name: kuma.io/service
-      priority: 1
-      type: string
-    - description: Service tag of the fourth inbound
-      jsonPath: .spec.networking.inbound[3].tags['kuma\.io/service']
-      name: kuma.io/service
-      priority: 1
-      type: string
-    name: v1alpha1
-    schema:
-      openAPIV3Schema:
-        properties:
-          apiVersion:
-            description: |-
-              APIVersion defines the versioned schema of this representation of an object.
-              Servers should convert recognized schemas to the latest internal value, and
-              may reject unrecognized values.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-            type: string
-          kind:
-            description: |-
-              Kind is a string value representing the REST resource this object represents.
-              Servers may infer this from the endpoint the client submits requests to.
-              Cannot be updated.
-              In CamelCase.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-            type: string
-          mesh:
-            description: |-
-              Mesh is the name of the Kuma mesh this resource belongs to.
-              It may be omitted for cluster-scoped resources.
-            type: string
-          metadata:
-            type: object
-          spec:
-            description: Spec is the specification of the Kuma Dataplane resource.
-            x-kubernetes-preserve-unknown-fields: true
-        type: object
-    served: true
-    storage: true
-    subresources: {}
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: serviceinsights.kuma.io
 spec:
   group: kuma.io
@@ -5675,7 +7460,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: timeouts.kuma.io
 spec:
   group: kuma.io
@@ -5725,7 +7510,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: trafficlogs.kuma.io
 spec:
   group: kuma.io
@@ -5775,7 +7560,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: trafficpermissions.kuma.io
 spec:
   group: kuma.io
@@ -5825,7 +7610,57 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: externalservices.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: ExternalService
+    listKind: ExternalServiceList
+    plural: externalservices
+    singular: externalservice
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          mesh:
+            description: |-
+              Mesh is the name of the Kuma mesh this resource belongs to.
+              It may be omitted for cluster-scoped resources.
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the specification of the Kuma ExternalService resource.
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: trafficroutes.kuma.io
 spec:
   group: kuma.io
@@ -5875,7 +7710,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: traffictraces.kuma.io
 spec:
   group: kuma.io
@@ -5925,7 +7760,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: virtualoutbounds.kuma.io
 spec:
   group: kuma.io
@@ -5975,7 +7810,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: zoneegresses.kuma.io
 spec:
   group: kuma.io
@@ -6031,7 +7866,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: zoneegressinsights.kuma.io
 spec:
   group: kuma.io
@@ -6081,7 +7916,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: zoneingresses.kuma.io
 spec:
   group: kuma.io
@@ -6137,57 +7972,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
-  name: externalservices.kuma.io
-spec:
-  group: kuma.io
-  names:
-    categories:
-    - kuma
-    kind: ExternalService
-    listKind: ExternalServiceList
-    plural: externalservices
-    singular: externalservice
-  scope: Cluster
-  versions:
-  - name: v1alpha1
-    schema:
-      openAPIV3Schema:
-        properties:
-          apiVersion:
-            description: |-
-              APIVersion defines the versioned schema of this representation of an object.
-              Servers should convert recognized schemas to the latest internal value, and
-              may reject unrecognized values.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-            type: string
-          kind:
-            description: |-
-              Kind is a string value representing the REST resource this object represents.
-              Servers may infer this from the endpoint the client submits requests to.
-              Cannot be updated.
-              In CamelCase.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-            type: string
-          mesh:
-            description: |-
-              Mesh is the name of the Kuma mesh this resource belongs to.
-              It may be omitted for cluster-scoped resources.
-            type: string
-          metadata:
-            type: object
-          spec:
-            description: Spec is the specification of the Kuma ExternalService resource.
-            x-kubernetes-preserve-unknown-fields: true
-        type: object
-    served: true
-    storage: true
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: zoneingressinsights.kuma.io
 spec:
   group: kuma.io
@@ -6238,7 +8023,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: zoneinsights.kuma.io
 spec:
   group: kuma.io
@@ -6288,7 +8073,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: zones.kuma.io
 spec:
   group: kuma.io
@@ -6338,7 +8123,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: faultinjections.kuma.io
 spec:
   group: kuma.io
@@ -6388,7 +8173,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: healthchecks.kuma.io
 spec:
   group: kuma.io
@@ -6438,7 +8223,79 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: hostnamegenerators.kuma.io
+spec:
+  group: kuma.io
+  names:
+    categories:
+    - kuma
+    kind: HostnameGenerator
+    listKind: HostnameGeneratorList
+    plural: hostnamegenerators
+    singular: hostnamegenerator
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the specification of the Kuma HostnameGenerator resource.
+            properties:
+              selector:
+                properties:
+                  meshExternalService:
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                  meshMultiZoneService:
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                  meshService:
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
+              template:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshaccesslogs.kuma.io
 spec:
   group: kuma.io
@@ -6648,9 +8505,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -6659,6 +8525,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -6671,6 +8542,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -6696,9 +8572,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -6707,6 +8592,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -6719,6 +8609,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -6893,9 +8788,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -6904,6 +8808,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -6916,6 +8825,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -6928,8 +8842,6 @@ spec:
                   - targetRef
                   type: object
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
@@ -6940,7 +8852,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: meshcircuitbreakers.kuma.io
 spec:
   group: kuma.io
@@ -7241,9 +9153,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -7252,6 +9173,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -7264,6 +9190,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -7289,9 +9220,18 @@ spec:
                     - MeshSubset
                     - MeshGateway
                     - MeshService
+                    - MeshExternalService
+                    - MeshMultiZoneService
                     - MeshServiceSubset
                     - MeshHTTPRoute
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are used to select group of MeshServices that match labels. Either Labels or
+                      Name and Namespace can be used.
+                    type: object
                   mesh:
                     description: Mesh is reserved for future use to identify cross
                       mesh resources.
@@ -7300,6 +9240,11 @@ spec:
                     description: |-
                       Name of the referenced resource. Can only be used with kinds: `MeshService`,
                       `MeshServiceSubset` and `MeshGatewayRoute`
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                      will be targeted.
                     type: string
                   proxyTypes:
                     description: |-
@@ -7312,6 +9257,11 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  sectionName:
+                    description: |-
+                      SectionName is used to target specific section of resource.
+                      For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                    type: string
                   tags:
                     additionalProperties:
                       type: string
@@ -7577,9 +9527,18 @@ spec:
                           - MeshSubset
                           - MeshGateway
                           - MeshService
+                          - MeshExternalService
+                          - MeshMultiZoneService
                           - MeshServiceSubset
                           - MeshHTTPRoute
                           type: string
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Labels are used to select group of MeshServices that match labels. Either Labels or
+                            Name and Namespace can be used.
+                          type: object
                         mesh:
                           description: Mesh is reserved for future use to identify
                             cross mesh resources.
@@ -7588,6 +9547,11 @@ spec:
                           description: |-
                             Name of the referenced resource. Can only be used with kinds: `MeshService`,
                             `MeshServiceSubset` and `MeshGatewayRoute`
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace specifies the namespace of target resource. If empty only resources in policy namespace
+                            will be targeted.
                           type: string
                         proxyTypes:
                           description: |-
@@ -7600,6 +9564,11 @@ spec:
                             type: string
                           minItems: 1
                           type: array
+                        sectionName:
+                          description: |-
+                            SectionName is used to target specific section of resource.
+                            For example, you can target port from MeshService.ports[] by its name. Only traffic to this port will be affected.
+                          type: string
                         tags:
                           additionalProperties:
                             type: string
@@ -7612,63 +9581,11 @@ spec:
                   - targetRef
                   type: object
                 type: array
-            required:
-            - targetRef
             type: object
         type: object
     served: true
     storage: true
     subresources: {}
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
-  name: meshes.kuma.io
-spec:
-  group: kuma.io
-  names:
-    categories:
-    - kuma
-    kind: Mesh
-    listKind: MeshList
-    plural: meshes
-    singular: mesh
-  scope: Cluster
-  versions:
-  - name: v1alpha1
-    schema:
-      openAPIV3Schema:
-        properties:
-          apiVersion:
-            description: |-
-              APIVersion defines the versioned schema of this representation of an object.
-              Servers should convert recognized schemas to the latest internal value, and
-              may reject unrecognized values.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-            type: string
-          kind:
-            description: |-
-              Kind is a string value representing the REST resource this object represents.
-              Servers may infer this from the endpoint the client submits requests to.
-              Cannot be updated.
-              In CamelCase.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-            type: string
-          mesh:
-            description: |-
-              Mesh is the name of the Kuma mesh this resource belongs to.
-              It may be omitted for cluster-scoped resources.
-            type: string
-          metadata:
-            type: object
-          spec:
-            description: Spec is the specification of the Kuma Mesh resource.
-            x-kubernetes-preserve-unknown-fields: true
-        type: object
-    served: true
-    storage: true
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -7690,6 +9607,21 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+    - ""
+    resources:
+      - secrets
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - "discovery.k8s.io"
+    resources:
+      - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
   - apiGroups:
       - "apps"
     resources:
@@ -7768,6 +9700,14 @@ rules:
       - update
       - patch
   - apiGroups:
+    - "discovery.k8s.io"
+    resources:
+    - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
       - kuma.io
     resources:
       - dataplanes
@@ -7798,6 +9738,7 @@ rules:
       - meshgateways
       - meshgatewayroutes
       - meshgatewayinstances
+      - meshgatewayconfigs
       - meshaccesslogs
       - meshcircuitbreakers
       - meshfaultinjections
@@ -7805,13 +9746,18 @@ rules:
       - meshhttproutes
       - meshloadbalancingstrategies
       - meshmetrics
+      - meshpassthroughs
       - meshproxypatches
       - meshratelimits
       - meshretries
       - meshtcproutes
       - meshtimeouts
+      - meshtlses
       - meshtraces
       - meshtrafficpermissions
+      - hostnamegenerators
+      - meshexternalservices
+      - meshmultizoneservices
       - meshservices
     verbs:
       - get
@@ -7991,7 +9937,7 @@ spec:
     metadata:
       annotations:
         checksum/config: fd9d1d8386f97f2bd49e50f476520816168a1c9f60bbc43dec1347a64d239155
-        checksum/tls-secrets: 55df76c297436a96c281fa360f359938237859b33236d52399c3c877d6154285
+        checksum/tls-secrets: cd5650b43d26157935d13a561eed2f7c85b6d0cf988a024a52e005527240a49d
       labels: 
         app: kuma-control-plane
         app.kubernetes.io/name: kuma
@@ -8026,6 +9972,7 @@ spec:
         kubernetes.io/os: linux
       hostNetwork: false
       terminationGracePeriodSeconds: 30
+      
       containers:
         - name: control-plane
           image: "docker.io/kumahq/kuma-cp:0.0.1"
@@ -8052,11 +9999,13 @@ spec:
             - name: KUMA_MODE
               value: "zone"
             - name: KUMA_PLUGIN_POLICIES_ENABLED
-              value: "meshaccesslogs,meshcircuitbreakers,meshfaultinjections,meshhealthchecks,meshhttproutes,meshloadbalancingstrategies,meshmetrics,meshproxypatches,meshratelimits,meshretries,meshtcproutes,meshtimeouts,meshtraces,meshtrafficpermissions"
+              value: "meshaccesslogs,meshcircuitbreakers,meshfaultinjections,meshhealthchecks,meshhttproutes,meshloadbalancingstrategies,meshmetrics,meshpassthroughs,meshproxypatches,meshratelimits,meshretries,meshtcproutes,meshtimeouts,meshtlses,meshtraces,meshtrafficpermissions"
             - name: KUMA_RUNTIME_KUBERNETES_ADMISSION_SERVER_CERT_DIR
               value: "/var/run/secrets/kuma.io/tls-cert"
             - name: KUMA_RUNTIME_KUBERNETES_ADMISSION_SERVER_PORT
               value: "5443"
+            - name: KUMA_RUNTIME_KUBERNETES_ALLOWED_USERS
+              value: "system:serviceaccount:kuma-system:kuma-control-plane"
             - name: KUMA_RUNTIME_KUBERNETES_CONTROL_PLANE_SERVICE_NAME
               value: "kuma-control-plane"
             - name: KUMA_RUNTIME_KUBERNETES_INJECTOR_CA_CERT_FILE
@@ -8065,8 +10014,6 @@ spec:
               value: "false"
             - name: KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_IMAGE
               value: "docker.io/kumahq/kuma-dp:0.0.1"
-            - name: KUMA_RUNTIME_KUBERNETES_SERVICE_ACCOUNT_NAME
-              value: "system:serviceaccount:kuma-system:kuma-control-plane"
             - name: KUMA_STORE_KUBERNETES_SYSTEM_NAMESPACE
               value: "kuma-system"
             - name: KUMA_STORE_TYPE
@@ -8075,6 +10022,16 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  containerName: control-plane
+                  resource: limits.memory
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  containerName: control-plane
+                  resource: limits.cpu
           args:
             - run
             - --log-level=info
@@ -8167,6 +10124,16 @@ webhooks:
           - UPDATE
         resources:
           - meshes
+          - dataplanes
+          - dataplaneinsights
+          - meshgateways
+          - zoneingresses
+          - zoneingressinsights
+          - zoneegresses
+          - zoneegressinsights
+          - serviceinsights
+          - zone
+          - zoneinsights
           - meshaccesslogs
           - meshcircuitbreakers
           - meshfaultinjections
@@ -8174,13 +10141,18 @@ webhooks:
           - meshhttproutes
           - meshloadbalancingstrategies
           - meshmetrics
+          - meshpassthroughs
           - meshproxypatches
           - meshratelimits
           - meshretries
           - meshtcproutes
           - meshtimeouts
+          - meshtlses
           - meshtraces
           - meshtrafficpermissions
+          - hostnamegenerators
+          - meshexternalservices
+          - meshmultizoneservices
           - meshservices
     sideEffects: None
   - name: owner-reference.kuma-admission.kuma.io
@@ -8227,13 +10199,18 @@ webhooks:
           - meshhttproutes
           - meshloadbalancingstrategies
           - meshmetrics
+          - meshpassthroughs
           - meshproxypatches
           - meshratelimits
           - meshretries
           - meshtcproutes
           - meshtimeouts
+          - meshtlses
           - meshtraces
           - meshtrafficpermissions
+          - hostnamegenerators
+          - meshexternalservices
+          - meshmultizoneservices
           - meshservices
   
       
@@ -8331,7 +10308,7 @@ webhooks:
           - dataplanes
           - externalservices
           - faultinjections
-          - gatewayinstances
+          - meshgatewayinstances
           - healthchecks
           - meshes
           - meshgateways
@@ -8353,13 +10330,18 @@ webhooks:
           - meshhttproutes
           - meshloadbalancingstrategies
           - meshmetrics
+          - meshpassthroughs
           - meshproxypatches
           - meshratelimits
           - meshretries
           - meshtcproutes
           - meshtimeouts
+          - meshtlses
           - meshtraces
           - meshtrafficpermissions
+          - hostnamegenerators
+          - meshexternalservices
+          - meshmultizoneservices
           - meshservices
     
       

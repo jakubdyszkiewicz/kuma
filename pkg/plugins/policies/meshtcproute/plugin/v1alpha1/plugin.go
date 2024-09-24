@@ -13,6 +13,7 @@ import (
 	"github.com/kumahq/kuma/pkg/plugins/policies/core/matchers"
 	"github.com/kumahq/kuma/pkg/plugins/policies/core/rules"
 	"github.com/kumahq/kuma/pkg/plugins/policies/core/xds/meshroute"
+	meshroute_gateway "github.com/kumahq/kuma/pkg/plugins/policies/core/xds/meshroute/gateway"
 	api "github.com/kumahq/kuma/pkg/plugins/policies/meshtcproute/api/v1alpha1"
 	plugin_gateway "github.com/kumahq/kuma/pkg/plugins/runtime/gateway"
 	"github.com/kumahq/kuma/pkg/plugins/runtime/gateway/match"
@@ -72,7 +73,7 @@ func ApplyToOutbounds(
 	tlsReady := ctx.Mesh.GetTLSReadiness()
 	servicesAccumulator := envoy_common.NewServicesAccumulator(tlsReady)
 
-	listeners, err := generateListeners(proxy, policies.ToRules.Rules, servicesAccumulator, ctx.Mesh)
+	listeners, err := generateListeners(proxy, policies.ToRules, servicesAccumulator, ctx.Mesh)
 	if err != nil {
 		return errors.Wrap(err, "couldn't generate listener resources")
 	}
@@ -80,7 +81,7 @@ func ApplyToOutbounds(
 
 	services := servicesAccumulator.Services()
 
-	clusters, err := meshroute.GenerateClusters(proxy, ctx.Mesh, services)
+	clusters, err := meshroute.GenerateClusters(proxy, ctx.Mesh, services, ctx.ControlPlane.SystemNamespace)
 	if err != nil {
 		return errors.Wrap(err, "couldn't generate cluster resources")
 	}
@@ -120,7 +121,7 @@ func ApplyToGateway(
 		return nil
 	}
 
-	listeners := meshroute.CollectListenerInfos(
+	listeners := meshroute_gateway.CollectListenerInfos(
 		ctx,
 		xdsCtx.Mesh,
 		gateway,
@@ -156,11 +157,13 @@ func ApplyToGateway(
 }
 
 func sortRulesToHosts(
-	meshLocalResources xds_context.ResourceMap,
+	_ xds_context.ResourceMap,
 	rawRules rules.GatewayRules,
 	address string,
-	listener *mesh_proto.MeshGateway_Listener,
-	sublisteners []meshroute.Sublistener,
+	port uint32,
+	protocol mesh_proto.MeshGateway_Listener_Protocol,
+	sublisteners []meshroute_gateway.Sublistener,
+	resolver model.LabelResourceIdentifierResolver,
 ) []plugin_gateway.GatewayListenerHostname {
 	hostInfosByHostname := map[string]plugin_gateway.GatewayListenerHostname{}
 	for _, hostnameTag := range sublisteners {
@@ -168,7 +171,6 @@ func sortRulesToHosts(
 			Hostname: hostnameTag.Hostname,
 			Routes:   nil,
 			Policies: map[model.ResourceType][]match.RankedPolicy{},
-			TLS:      listener.Tls,
 			Tags:     hostnameTag.Tags,
 		}
 		hostInfo := plugin_gateway.GatewayHostInfo{
@@ -176,22 +178,22 @@ func sortRulesToHosts(
 		}
 		inboundListener := rules.NewInboundListenerHostname(
 			address,
-			listener.GetPort(),
+			port,
 			hostnameTag.Hostname,
 		)
 		rulesForListener, ok := rawRules.ToRules.ByListenerAndHostname[inboundListener]
 		if !ok {
 			continue
 		}
-		hostInfo.AppendEntries(generateEnvoyRouteEntries(host, rulesForListener))
-		meshroute.AddToListenerByHostname(
+		hostInfo.AppendEntries(generateEnvoyRouteEntries(host, rulesForListener, resolver))
+		meshroute_gateway.AddToListenerByHostname(
 			hostInfosByHostname,
-			listener.Protocol,
+			protocol,
 			hostnameTag.Hostname,
-			listener.Tls,
+			hostnameTag.TLS,
 			hostInfo,
 		)
 	}
 
-	return meshroute.SortByHostname(hostInfosByHostname)
+	return meshroute_gateway.SortByHostname(hostInfosByHostname)
 }

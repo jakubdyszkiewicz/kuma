@@ -39,14 +39,14 @@ type validatingHandler struct {
 	coreRegistry core_registry.TypeRegistry
 	k8sRegistry  k8s_registry.TypeRegistry
 	converter    k8s_common.Converter
-	decoder      *admission.Decoder
+	decoder      admission.Decoder
 }
 
-func (h *validatingHandler) InjectDecoder(d *admission.Decoder) {
+func (h *validatingHandler) InjectDecoder(d admission.Decoder) {
 	h.decoder = d
 }
 
-func (h *validatingHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
+func (h *validatingHandler) Handle(_ context.Context, req admission.Request) admission.Response {
 	_, err := h.coreRegistry.DescriptorFor(core_model.ResourceType(req.Kind.Kind))
 	if err != nil {
 		// we only care about types in the registry for this handler
@@ -58,7 +58,7 @@ func (h *validatingHandler) Handle(ctx context.Context, req admission.Request) a
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	if resp := h.IsOperationAllowed(req.UserInfo, coreRes); !resp.Allowed {
+	if resp := h.IsOperationAllowed(req.UserInfo, coreRes, req.Namespace); !resp.Allowed {
 		return resp
 	}
 
@@ -77,7 +77,7 @@ func (h *validatingHandler) Handle(ctx context.Context, req admission.Request) a
 		if err := core_model.Validate(coreRes); err != nil {
 			if kumaErr, ok := err.(*validators.ValidationError); ok {
 				// we assume that coreRes.Validate() returns validation errors of the spec
-				return convertSpecValidationError(kumaErr, coreRes.Descriptor().IsTargetRefBased, k8sObj)
+				return convertSpecValidationError(kumaErr, coreRes.Descriptor().IsPluginOriginated, k8sObj)
 			}
 			return admission.Denied(err.Error())
 		}
@@ -115,9 +115,10 @@ func (h *validatingHandler) decode(req admission.Request) (core_model.Resource, 
 
 func (h *validatingHandler) validateLabels(rm core_model.ResourceMeta) validators.ValidationError {
 	var verr validators.ValidationError
+	labelsPath := validators.Root().Field("labels")
 	if origin, ok := core_model.ResourceOrigin(rm); ok {
 		if err := origin.IsValid(); err != nil {
-			verr.AddViolationAt(validators.Root().Field("labels").Key(mesh_proto.ResourceOriginLabel), err.Error())
+			verr.AddViolationAt(labelsPath.Key(mesh_proto.ResourceOriginLabel), err.Error())
 		}
 	}
 	return verr
@@ -127,10 +128,10 @@ func (h *validatingHandler) Supports(admission.Request) bool {
 	return true
 }
 
-func convertSpecValidationError(kumaErr *validators.ValidationError, isTargetRef bool, obj k8s_model.KubernetesObject) admission.Response {
+func convertSpecValidationError(kumaErr *validators.ValidationError, isPluginOriginated bool, obj k8s_model.KubernetesObject) admission.Response {
 	verr := validators.OK()
 	if kumaErr != nil {
-		if isTargetRef {
+		if isPluginOriginated {
 			verr = *kumaErr
 		} else {
 			verr.AddError("spec", *kumaErr)

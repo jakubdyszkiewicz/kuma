@@ -12,10 +12,13 @@ import (
 
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
 	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/accesslogs"
+	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/certificate"
 	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/dnsserver"
 	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/envoy"
 	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/meshmetrics"
 	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/metrics"
+	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/probes"
+	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/readiness"
 	kuma_cmd "github.com/kumahq/kuma/pkg/cmd"
 	"github.com/kumahq/kuma/pkg/config"
 	kumadp "github.com/kumahq/kuma/pkg/config/app/kuma-dp"
@@ -123,6 +126,10 @@ func newRunCmd(opts kuma_cmd.RunCmdOpts, rootCtx *RootContext) *cobra.Command {
 				runLog.Info("generated configurations will be stored in a temporary directory", "dir", tmpDir)
 			}
 
+			if cfg.DataplaneRuntime.SystemCaPath == "" {
+				cfg.DataplaneRuntime.SystemCaPath = certificate.GetOsCaFilePath()
+			}
+
 			if cfg.ControlPlane.CaCert == "" && cfg.ControlPlane.CaCertFile != "" {
 				cert, err := os.ReadFile(cfg.ControlPlane.CaCertFile)
 				if err != nil {
@@ -148,7 +155,7 @@ func newRunCmd(opts kuma_cmd.RunCmdOpts, rootCtx *RootContext) *cobra.Command {
 			}
 
 			// gracefulCtx indicate that the process received a signal to shutdown
-			gracefulCtx, ctx := opts.SetupSignalHandler()
+			gracefulCtx, ctx, usr2Recv := opts.SetupSignalHandler()
 			// componentCtx indicates that components should shutdown (you can use cancel to trigger the shutdown of all components)
 			componentCtx, cancelComponents := context.WithCancel(gracefulCtx)
 			components := []component.Component{tokenComp}
@@ -166,7 +173,7 @@ func newRunCmd(opts kuma_cmd.RunCmdOpts, rootCtx *RootContext) *cobra.Command {
 				return errors.Wrap(err, "failed to get Envoy version")
 			}
 
-			if envoyVersion.KumaDpCompatible, err = envoy.VersionCompatible("~"+kuma_version.Envoy, envoyVersion.Version); err != nil {
+			if envoyVersion.KumaDpCompatible, err = envoy.VersionCompatible(kuma_version.Envoy, envoyVersion.Version); err != nil {
 				runLog.Error(err, "cannot determine envoy version compatibility")
 			} else if !envoyVersion.KumaDpCompatible {
 				runLog.Info("Envoy version incompatible", "expected", kuma_version.Envoy, "current", envoyVersion.Version)
@@ -175,17 +182,18 @@ func newRunCmd(opts kuma_cmd.RunCmdOpts, rootCtx *RootContext) *cobra.Command {
 			runLog.Info("fetched Envoy version", "version", envoyVersion)
 
 			runLog.Info("generating bootstrap configuration")
+			appProbeProxyEnabled := opts.Config.ApplicationProbeProxyServer.Port > 0
 			bootstrap, kumaSidecarConfiguration, err := rootCtx.BootstrapGenerator(gracefulCtx, opts.Config.ControlPlane.URL, opts.Config, envoy.BootstrapParams{
-				Dataplane:           opts.Dataplane,
-				DNSPort:             cfg.DNS.EnvoyDNSPort,
-				EmptyDNSPort:        cfg.DNS.CoreDNSEmptyPort,
-				EnvoyVersion:        *envoyVersion,
-				Workdir:             cfg.DataplaneRuntime.SocketDir,
-				AccessLogSocketPath: core_xds.AccessLogSocketName(cfg.DataplaneRuntime.SocketDir, cfg.Dataplane.Name, cfg.Dataplane.Mesh),
-				MetricsSocketPath:   core_xds.MetricsHijackerSocketName(cfg.DataplaneRuntime.SocketDir, cfg.Dataplane.Name, cfg.Dataplane.Mesh),
-				DynamicMetadata:     rootCtx.BootstrapDynamicMetadata,
-				MetricsCertPath:     cfg.DataplaneRuntime.Metrics.CertPath,
-				MetricsKeyPath:      cfg.DataplaneRuntime.Metrics.KeyPath,
+				Dataplane:            opts.Dataplane,
+				DNSPort:              cfg.DNS.EnvoyDNSPort,
+				ReadinessPort:        cfg.Dataplane.ReadinessPort,
+				AppProbeProxyEnabled: appProbeProxyEnabled,
+				EnvoyVersion:         *envoyVersion,
+				Workdir:              cfg.DataplaneRuntime.SocketDir,
+				DynamicMetadata:      rootCtx.BootstrapDynamicMetadata,
+				MetricsCertPath:      cfg.DataplaneRuntime.Metrics.CertPath,
+				MetricsKeyPath:       cfg.DataplaneRuntime.Metrics.KeyPath,
+				SystemCaPath:         cfg.DataplaneRuntime.SystemCaPath,
 			})
 			if err != nil {
 				return errors.Errorf("Failed to generate Envoy bootstrap config. %v", err)
@@ -233,28 +241,71 @@ func newRunCmd(opts kuma_cmd.RunCmdOpts, rootCtx *RootContext) *cobra.Command {
 
 			observabilityComponents := setupObservability(kumaSidecarConfiguration, bootstrap, cfg)
 			components = append(components, observabilityComponents...)
+
+			var readinessReporter *readiness.Reporter
+			if cfg.Dataplane.ReadinessPort > 0 {
+				readinessReporter = readiness.NewReporter(
+					bootstrap.GetAdmin().GetAddress().GetSocketAddress().GetAddress(),
+					cfg.Dataplane.ReadinessPort)
+				components = append(components, readinessReporter)
+			}
+
 			if err := rootCtx.ComponentManager.Add(components...); err != nil {
 				return err
 			}
 
+			if appProbeProxyEnabled {
+				prober := probes.NewProber(kumaSidecarConfiguration.Networking.Address, opts.Config.ApplicationProbeProxyServer.Port)
+				if err := rootCtx.ComponentManager.Add(prober); err != nil {
+					return err
+				}
+			}
+
 			stopComponents := make(chan struct{})
 			go func() {
-				select {
-				case <-gracefulCtx.Done():
-					runLog.Info("Kuma DP caught an exit signal. Draining Envoy connections")
-					if err := envoyComponent.DrainConnections(); err != nil {
-						runLog.Error(err, "could not drain connections")
-					} else {
-						runLog.Info("waiting for connections to be drained", "waitTime", cfg.Dataplane.DrainTime)
-						select {
-						case <-time.After(cfg.Dataplane.DrainTime.Duration):
-						case <-ctx.Done():
+				var draining bool
+				for {
+					select {
+					case _, ok := <-usr2Recv:
+						if !ok {
+							// If our channel is closed, never take this branch
+							// again
+							usr2Recv = nil
+							continue
 						}
+						if !draining {
+							runLog.Info("draining Envoy connections")
+							if err := envoyComponent.DrainForever(); err != nil {
+								runLog.Error(err, "could not drain connections")
+							}
+						}
+						draining = true
+						continue
+					case <-gracefulCtx.Done():
+						runLog.Info("Kuma DP caught an exit signal")
+						if draining {
+							runLog.Info("already drained, exit immediately")
+						} else {
+							if readinessReporter != nil {
+								readinessReporter.Terminating()
+							}
+							runLog.Info("draining Envoy connections")
+							if err := envoyComponent.FailHealthchecks(); err != nil {
+								runLog.Error(err, "could not drain connections")
+							} else {
+								runLog.Info("waiting for connections to be drained", "waitTime", cfg.Dataplane.DrainTime)
+								select {
+								case <-time.After(cfg.Dataplane.DrainTime.Duration):
+								case <-ctx.Done():
+								}
+							}
+						}
+					case <-componentCtx.Done():
 					}
-				case <-componentCtx.Done():
+					runLog.Info("stopping all Kuma DP components")
+					close(stopComponents)
+					return
 				}
-				runLog.Info("stopping all Kuma DP components")
-				close(stopComponents)
 			}()
 
 			runLog.Info("starting Kuma DP", "version", kuma_version.Build.Version)
@@ -287,14 +338,12 @@ func newRunCmd(opts kuma_cmd.RunCmdOpts, rootCtx *RootContext) *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&cfg.DNS.Enabled, "dns-enabled", cfg.DNS.Enabled, "If true then builtin DNS functionality is enabled and CoreDNS server is started")
 	cmd.PersistentFlags().Uint32Var(&cfg.DNS.EnvoyDNSPort, "dns-envoy-port", cfg.DNS.EnvoyDNSPort, "A port that handles Virtual IP resolving by Envoy. CoreDNS should be configured that it first tries to use this DNS resolver and then the real one")
 	cmd.PersistentFlags().Uint32Var(&cfg.DNS.CoreDNSPort, "dns-coredns-port", cfg.DNS.CoreDNSPort, "A port that handles DNS requests. When transparent proxy is enabled then iptables will redirect DNS traffic to this port.")
-	cmd.PersistentFlags().Uint32Var(&cfg.DNS.CoreDNSEmptyPort, "dns-coredns-empty-port", cfg.DNS.CoreDNSEmptyPort, "A port that always responds with empty NXDOMAIN respond. It is required to implement a fallback to a real DNS.")
 	cmd.PersistentFlags().StringVar(&cfg.DNS.CoreDNSBinaryPath, "dns-coredns-path", cfg.DNS.CoreDNSBinaryPath, "A path to CoreDNS binary.")
 	cmd.PersistentFlags().StringVar(&cfg.DNS.CoreDNSConfigTemplatePath, "dns-coredns-config-template-path", cfg.DNS.CoreDNSConfigTemplatePath, "A path to a CoreDNS config template.")
 	cmd.PersistentFlags().StringVar(&cfg.DNS.ConfigDir, "dns-server-config-dir", cfg.DNS.ConfigDir, "Directory in which DNS Server config will be generated")
 	cmd.PersistentFlags().Uint32Var(&cfg.DNS.PrometheusPort, "dns-prometheus-port", cfg.DNS.PrometheusPort, "A port for exposing Prometheus stats")
 	cmd.PersistentFlags().BoolVar(&cfg.DNS.CoreDNSLogging, "dns-enable-logging", cfg.DNS.CoreDNSLogging, "If true then CoreDNS logging is enabled")
 
-	_ = cmd.PersistentFlags().MarkDeprecated("dns-coredns-empty-port", "It's not used anymore. It will be removed in 2.7.x version")
 	return cmd
 }
 

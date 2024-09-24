@@ -1,21 +1,22 @@
 package export
 
 import (
-	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	api_common "github.com/kumahq/kuma/api/openapi/types/common"
 	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
 	"github.com/kumahq/kuma/app/kumactl/pkg/output"
 	"github.com/kumahq/kuma/app/kumactl/pkg/output/printers"
 	"github.com/kumahq/kuma/app/kumactl/pkg/output/table"
 	"github.com/kumahq/kuma/app/kumactl/pkg/output/yaml"
 	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_system "github.com/kumahq/kuma/pkg/core/resources/apis/system"
 	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/model/rest/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core/resources/store"
 	admin_tls "github.com/kumahq/kuma/pkg/envoy/admin/tls"
 	intercp_tls "github.com/kumahq/kuma/pkg/intercp/tls"
@@ -26,8 +27,9 @@ type exportContext struct {
 	*kumactl_cmd.RootContext
 
 	args struct {
-		profile string
-		format  string
+		profile      string
+		format       string
+		includeAdmin bool
 	}
 }
 
@@ -35,10 +37,19 @@ const (
 	profileFederation             = "federation"
 	profileFederationWithPolicies = "federation-with-policies"
 	profileAll                    = "all"
+	profileNoDataplanes           = "no-dataplanes"
 
 	formatUniversal  = "universal"
 	formatKubernetes = "kubernetes"
 )
+
+var allProfiles = []string{
+	profileAll, profileFederation, profileFederationWithPolicies, profileNoDataplanes,
+}
+
+func IsMigrationProfile(profile string) bool {
+	return slices.Contains([]string{profileFederation, profileFederationWithPolicies}, profile)
+}
 
 func NewExportCmd(pctx *kumactl_cmd.RootContext) *cobra.Command {
 	ctx := &exportContext{RootContext: pctx}
@@ -52,21 +63,23 @@ $ kumactl export --profile federation --format universal > policies.yaml
 `,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := pctx.CheckServerVersionCompatibility(); err != nil {
-				cmd.PrintErrln(err)
+			version := kumactl_cmd.CheckCompatibility(pctx.FetchServerVersion, cmd.ErrOrStderr())
+			if version != nil {
+				cmd.Printf("# Product: %s, Version: %s, Hostname: %s, ClusterId: %s, InstanceId: %s\n",
+					version.Product, version.Version, version.Hostname, version.ClusterId, version.InstanceId)
 			}
 
-			if ctx.args.profile != profileAll && ctx.args.profile != profileFederation && ctx.args.profile != profileFederationWithPolicies {
-				return errors.New("invalid profile")
+			if !slices.Contains(allProfiles, ctx.args.profile) {
+				return fmt.Errorf("invalid profile: %q", ctx.args.profile)
 			}
 
-			resTypes, err := resourcesTypesToDump(cmd.Context(), ctx)
+			if !slices.Contains([]string{formatKubernetes, formatUniversal}, ctx.args.format) {
+				return fmt.Errorf("invalid format: %q", ctx.args.format)
+			}
+
+			resTypes, err := resourcesTypesToDump(cmd, ctx)
 			if err != nil {
 				return err
-			}
-
-			if ctx.args.format != formatUniversal && ctx.args.format != formatKubernetes {
-				return errors.New("invalid format")
 			}
 
 			rs, err := pctx.CurrentResourceStore()
@@ -79,29 +92,48 @@ $ kumactl export --profile federation --format universal > policies.yaml
 				return errors.Wrap(err, "could not list meshes")
 			}
 
-			var allResources []model.Resource
-			for _, resType := range resTypes {
-				resDesc, err := pctx.Runtime.Registry.DescriptorFor(resType)
-				if err != nil {
-					return err
-				}
+			var meshDeclarations []model.Resource
+			var meshSecrets []model.Resource
+			var otherResources []model.Resource
+			for _, resDesc := range resTypes {
 				if resDesc.Scope == model.ScopeGlobal {
 					list := resDesc.NewList()
 					if err := rs.List(cmd.Context(), list); err != nil {
-						return errors.Wrapf(err, "could not list %q", resType)
+						return errors.Wrapf(err, "could not list %q", resDesc.Name)
 					}
-					allResources = append(allResources, list.GetItems()...)
+					for _, res := range list.GetItems() {
+						if res.Descriptor().Name == core_mesh.MeshType {
+							mesh := res.(*core_mesh.MeshResource)
+							mesh.Spec.SkipCreatingInitialPolicies = []string{"*"}
+							meshDeclaration := core_mesh.NewMeshResource()
+							meshDeclaration.SetMeta(
+								v1alpha1.ResourceMeta{
+									Type: string(core_mesh.MeshType),
+									Name: res.GetMeta().GetName(),
+								},
+							)
+							meshDeclarations = append(meshDeclarations, meshDeclaration)
+						}
+						otherResources = append(otherResources, res)
+					}
 				} else {
 					for _, mesh := range meshes.Items {
 						list := resDesc.NewList()
 						if err := rs.List(cmd.Context(), list, store.ListByMesh(mesh.GetMeta().GetName())); err != nil {
-							return errors.Wrapf(err, "could not list %q", resType)
+							return errors.Wrapf(err, "could not list %q", resDesc.Name)
 						}
-						allResources = append(allResources, list.GetItems()...)
+						for _, res := range list.GetItems() {
+							if res.Descriptor().Name == core_system.SecretType {
+								meshSecrets = append(meshSecrets, res)
+							} else {
+								otherResources = append(otherResources, res)
+							}
+						}
 					}
 				}
 			}
 
+			allResources := append(meshDeclarations, append(meshSecrets, otherResources...)...)
 			var resources []model.Resource
 			var userTokenSigningKeys []model.Resource
 			// filter out envoy-admin-ca and inter-cp-ca otherwise it will cause TLS handshake errors
@@ -150,8 +182,9 @@ $ kumactl export --profile federation --format universal > policies.yaml
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&ctx.args.profile, "profile", "p", profileFederation, fmt.Sprintf(`Profile. Available values: %q, %q, %q`, profileFederation, profileAll, profileFederationWithPolicies))
+	cmd.Flags().StringVarP(&ctx.args.profile, "profile", "p", profileFederation, fmt.Sprintf(`Profile. Available values: %s`, strings.Join(allProfiles, ",")))
 	cmd.Flags().StringVarP(&ctx.args.format, "format", "f", formatUniversal, fmt.Sprintf(`Policy format output. Available values: %q, %q`, formatUniversal, formatKubernetes))
+	cmd.Flags().BoolVarP(&ctx.args.includeAdmin, "include-admin", "a", false, "Include admin resource types (like secrets), this flag is ignored on migration profiles like federation as these entities are required")
 	return cmd
 }
 
@@ -169,37 +202,53 @@ func cleanKubeObject(obj map[string]interface{}) {
 	delete(meta, "managedFields")
 }
 
-func resourcesTypesToDump(ctx context.Context, ectx *exportContext) ([]model.ResourceType, error) {
+func resourcesTypesToDump(cmd *cobra.Command, ectx *exportContext) ([]model.ResourceTypeDescriptor, error) {
 	client, err := ectx.CurrentResourcesListClient()
 	if err != nil {
 		return nil, err
 	}
-	list, err := client.List(ctx)
+	list, err := client.List(cmd.Context())
 	if err != nil {
 		return nil, err
 	}
-	var resTypes []model.ResourceType
+	var resDescList []model.ResourceTypeDescriptor
+	var incompatibleTypes []string
 	for _, res := range list.Resources {
+		resDesc, err := ectx.Runtime.Registry.DescriptorFor(model.ResourceType(res.Name))
+		if err != nil {
+			incompatibleTypes = append(incompatibleTypes, res.Name)
+			continue
+		}
+		if resDesc.AdminOnly && !IsMigrationProfile(ectx.args.profile) && !ectx.args.includeAdmin {
+			continue
+		}
+		// For each profile remove types we don't want
 		switch ectx.args.profile {
-		case profileAll:
-			resTypes = append(resTypes, model.ResourceType(res.Name))
 		case profileFederation:
-			if includeInFederationProfile(res) {
-				resTypes = append(resTypes, model.ResourceType(res.Name))
+			if !res.IncludeInFederation { // base decision on `IncludeInFederation` field
+				continue
+			}
+			if res.Policy != nil && res.Policy.IsTargetRef { // do not include new policies
+				continue
+			}
+			if res.Name == string(core_mesh.MeshGatewayType) { // do not include MeshGateways
+				continue
 			}
 		case profileFederationWithPolicies:
-			if res.IncludeInFederation {
-				resTypes = append(resTypes, model.ResourceType(res.Name))
+			if !res.IncludeInFederation {
+				continue
 			}
-		default:
-			return nil, errors.New("invalid profile")
+		case profileNoDataplanes:
+			if resDesc.Name == core_mesh.DataplaneType || resDesc.Name == core_mesh.DataplaneInsightType {
+				continue
+			}
 		}
+		resDescList = append(resDescList, resDesc)
 	}
-	return resTypes, nil
-}
-
-func includeInFederationProfile(res api_common.ResourceTypeDescription) bool {
-	return res.IncludeInFederation && // base decision on `IncludeInFederation` field
-		(res.Policy == nil || (res.Policy != nil && !res.Policy.IsTargetRef)) && // do not include new policies
-		res.Name != string(core_mesh.MeshGatewayType) // do not include MeshGateways
+	if len(incompatibleTypes) > 0 {
+		msg := fmt.Sprintf("The following types won't be exported because they are unknown to kumactl: %s", strings.Join(incompatibleTypes, ","))
+		cmd.Printf("# %s\n", msg)
+		cmd.PrintErrf("WARNING: %s. Are you using a compatible version of kumactl?\n", msg)
+	}
+	return resDescList, nil
 }

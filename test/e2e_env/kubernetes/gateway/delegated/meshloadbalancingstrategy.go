@@ -16,6 +16,10 @@ func MeshLoadBalancingStrategy(config *Config) func() {
 	GinkgoHelper()
 
 	return func() {
+		framework.AfterEachFailure(func() {
+			framework.DebugKube(kubernetes.Cluster, config.Mesh, config.Namespace, config.ObservabilityDeploymentName)
+		})
+
 		framework.E2EAfterEach(func() {
 			Expect(framework.DeleteMeshResources(
 				kubernetes.Cluster,
@@ -40,14 +44,14 @@ func MeshLoadBalancingStrategy(config *Config) func() {
 kind: MeshLoadBalancingStrategy
 apiVersion: kuma.io/v1alpha1
 metadata:
-  name: ring-hash
+  name: ring-hash-delegated
   namespace: %s
   labels:
     kuma.io/mesh: %s
 spec:
   targetRef:
     kind: MeshService
-    name: delegated-gateway-admin_%[2]s_svc_8444
+    name: %[2]s-gateway-admin_%[2]s_svc_8444
   to:
     - targetRef:
         kind: MeshService

@@ -6,7 +6,244 @@ with `x.y.z` being the version you are planning to upgrade to.
 If such a section does not exist, the upgrade you want to perform
 does not have any particular instructions.
 
+## Upgrade to `2.9.x`
+
+### MeshExternalService
+
+#### Removal of unix sockets support
+
+It's no longer possible to define a unix domain socket on the `address` field.
+
+### Upgrading Transparent Proxy Configuration
+
+#### Removal of Deprecated IPv6 Redirection Flag and Annotation
+
+In this release, the following deprecated options for configuring IPv6 transparent proxy redirection have been removed:
+
+- The `--redirect-inbound-port-ipv6` flag in `kumactl install transparent-proxy`.
+- The `kuma.io/transparent-proxying-inbound-v6-port` annotation.
+
+Previously, disabling IPv6 transparent proxy redirection could be achieved by setting these options to `0`. This method is no longer supported.
+
+To disable IPv6 transparent proxy redirection, you should now use the `--ip-family-mode` flag or the `kuma.io/transparent-proxying-ip-family-mode` annotation and set their value to `ipv4`. The default value for these options is `dualstack`.
+
+**Example:**
+
+In Universal mode, to install a transparent proxy:
+
+```sh
+kumactl install transparent-proxy --ip-family-mode ipv4 ...
+```
+
+In the definition of the `Dataplane` resource:
+
+```yaml
+type: Dataplane
+mesh: default
+name: dp-1
+networking:
+  # ...
+  transparentProxying:
+    redirectPortInbound: 15006
+    redirectPortOutbound: 15001
+    ipFamilyMode: ipv4
+```
+
+To set the configuration for Kubernetes workloads:
+
+```sh
+kumactl install control-plane --set controlPlane.envVars.KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_IP_FAMILY_MODE=ipv4 ...
+```
+
+or
+
+```sh
+helm install --set controlPlane.envVars.KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_IP_FAMILY_MODE=ipv4 ... kuma kuma/kuma
+```
+
+For more information about disabling IPv6 in transparent proxy redirection, visit our documentation: [Disabling IPv6](https://kuma.io/docs/2.8.x/production/dp-config/ipv6/#disabling-ipv6).
+
+Please update your configurations accordingly to ensure a smooth transition and avoid any disruptions in your service.
+
+#### Removal of `redirectPortInboundV6` Field from Dataplane Resource
+
+The `Dataplane` resource no longer includes the `redirectPortInboundV6` field. Any configuration containing this field will fail validation. Update your `Dataplane` resources as shown below:
+
+**Previous configuration:**
+
+```yaml
+type: Dataplane
+mesh: default
+name: dp-1
+networking:
+  # ...
+  transparentProxying:
+    redirectPortInbound: 15006
+    redirectPortInboundV6: 15006
+    redirectPortOutbound: 15001
+```
+
+**Updated configuration:**
+
+```yaml
+type: Dataplane
+mesh: default
+name: dp-1
+networking:
+  # ...
+  transparentProxying:
+    redirectPortInbound: 15006
+    redirectPortOutbound: 15001
+```
+
+Ensure to update your Dataplane resources to the new format to avoid any validation errors.
+
+#### Removal of Deprecated Exclude Outbound TCP/UDP Ports for UIDs Flags
+
+The flags `--exclude-outbound-tcp-ports-for-uids` and `--exclude-outbound-udp-ports-for-uids` have been removed from the `kumactl install transparent-proxy` command. Users should now use the consolidated flag `--exclude-outbound-ports-for-uids <protocol:>?<ports:>?<uids>` instead.
+
+##### Examples:
+
+- To disable redirection of outbound TCP traffic on port 22 for users with UID 1000:
+  ```sh
+  kumactl install transparent-proxy --exclude-outbound-ports-for-uids tcp:22:1000 ...
+  ```
+
+- To disable redirection of outbound UDP traffic on port 53 for users with UID 1000:
+  ```sh
+  kumactl install transparent-proxy --exclude-outbound-ports-for-uids udp:53:1000 ...
+  ```
+
+#### Removal of Deprecated Exclude Outbound TCP/UDP Ports for UIDs Annotations
+
+The annotations `traffic.kuma.io/exclude-outbound-tcp-ports-for-uids` and `traffic.kuma.io/exclude-outbound-udp-ports-for-uids` have also been removed. Use the annotation `traffic.kuma.io/exclude-outbound-ports-for-uids` instead.
+
+##### Examples:
+
+- To disable redirection of outbound TCP traffic on port 22 for users with UID 1000:
+  ```yaml
+  traffic.kuma.io/exclude-outbound-ports-for-uids: tcp:22:1000
+  ```
+
+- To disable redirection of outbound UDP traffic on port 53 for users with UID 1000:
+  ```yaml
+  traffic.kuma.io/exclude-outbound-ports-for-uids: udp:53:1000
+  ```
+
+Make sure to update your configuration files and scripts accordingly to accommodate these changes.
+
+#### Deprecation of `--kuma-dp-uid` Flag
+
+In this release, the `--kuma-dp-uid` flag used in the `kumactl install transparent-proxy` command has been deprecated. The functionality of specifying a user by UID is now included in the `--kuma-dp-user` flag, which accepts both usernames and UIDs.
+
+**New Usage Example:**
+
+Instead of using:
+```sh
+kumactl install transparent-proxy --kuma-dp-uid 1234
+```
+
+You should now use:
+```sh
+kumactl install transparent-proxy --kuma-dp-user 1234
+```
+
+If the `--kuma-dp-user` flag is not provided, the system will attempt to use the default UID (`5678`) or the default username (`kuma-dp`).
+
+Please update your scripts and configurations accordingly to accommodate this change.
+
+### Setting `kuma.io/service` in tags of `MeshGatewayInstance` had been forbidden
+
+To increase security, in version 2.7.x, setting a `kuma.io/service` tag for the `MeshGatewayInstance` was deprecated and since 2.9.x is not supported. We generate the `kuma.io/service` tag based on the `MeshGatewayInstance` resource. The service name is constructed as `{MeshGatewayInstance name}_{MeshGatewayInstance namespace}_svc`.
+
+E.g.:
+
+```yaml
+apiVersion: kuma.io/v1alpha1
+kind: MeshGatewayInstance
+metadata:
+  name: demo-app
+  namespace: kuma-demo
+  labels:
+    kuma.io/mesh: default
+```
+
+The generated `kuma.io/service` value is `demo-app_kuma-demo_svc`.
+
+#### Migration
+
+The migration process requires updating all policies and `MeshGateway` resources using the old `kuma.io/service` value to adopt the new one.
+
+Migration step:
+1. Create a copy of policies using the new `kuma.io/service` and the new resource name to avoid overwriting previous policies.
+2. Duplicate the `MeshGateway` resource with a selector using the new `kuma.io/service` value.
+3. Deploy the gateway and verify if traffic works correctly.
+4. Remove the old resources.
+
+### Introduction to Application Probe Proxy and deprecation of Virtual Probes
+
+To support more types of application probes on Kubernetes, in version 2.9, we introduced a new feature named "Application Probe Proxy" which supports `HTTPGet`, `TCPSocket` and `gRPC` application probes. Starting from `2.9.x`, Virtual Probes is deprecated, and Application Probe Proxy is enabled by default.
+
+Application workloads using Virtual Probes will be migrated to Application Probe Proxy automatically on next restart/redeploy on Kubernetes, without other operations. 
+
+Application Probe Proxy will by default listen on port `9001`. To prevent potential conflicts with applications, you may customize this port using one of these methods:
+
+1. Configuring on the control plane to apply on all dataplanes: set the port onto configuration key `runtime.kubernetes.injector.applicationProbeProxyPort` 
+1. Configuring on the control plane to apply on all dataplanes: set the port using environment variable `KUMA_RUNTIME_KUBERNETES_APPLICATION_PROBE_PROXY_PORT` 
+1. Configuring for certain dataplanes: set the port using pod annotation `kuma.io/application-probe-proxy-port`
+
+By setting the port to `0`, Application Probe Proxy feature will be disabled, and when it's disabled, Virtual Probes still works as usual until the deprecation period ends.
+
+Because of deprecation of Virtual Probes, the following items are considered deprecated:
+
+- Pod annotation `kuma.io/virtual-probes`
+- Pod annotation `kuma.io/virtual-probes-port`
+- Control plane configuration key `runtime.kubernetes.injector.virtualProbesEnabled`
+- Control plane configuration key `runtime.kubernetes.injector.virtualProbesPort`
+- Control plane environment variable `KUMA_RUNTIME_KUBERNETES_VIRTUAL_PROBES_ENABLED`
+- Control plane environment variable `KUMA_RUNTIME_KUBERNETES_VIRTUAL_PROBES_PORT`
+- Data field `probes` on `Dataplane` objects
+
+### kumactl
+
+#### Default prometheus scrape config removes `service`
+
+If you rely on a scrape config from previous version it's advised to remove the relabel config that was adding `service`.
+Indeed `service` is a very common label and metrics were sometimes coliding with Kuma metrics. If you want the label `kuma_io_service` is always the same as `service`.
+
+### Removal of KDS `KUMA_EXPERIMENTAL_KDS_DELTA_ENABLED` configuration option
+
+In this release, KDS Delta is used by default and the CP environment variable `KUMA_EXPERIMENTAL_KDS_DELTA_ENABLED` doesn't exist anymore.
+
+### Deprecation of `yes/no` values for annotation switches
+
+The values `yes` and `no` are deprecated for specifying boolean values in switches based on pod annotations, and support for these values will be removed in a future release. Since these values were undocumented, they are not expected to be widely used.
+
+Please use `true` and `false` as replacements; some boolean switches also support `enabled` and `disabled`. [Check the documentation](https://kuma.io/docs/latest/reference/kubernetes-annotations/) for the specific annotation to confirm the correct replacements.
+
 ## Upgrade to `2.8.x`
+
+### MeshFaultInjection responseBandwidth.limit
+
+With [#10371](https://github.com/kumahq/kuma/pull/10371) we have tightened the validation of the `responseBandwidth.limit` field in `MeshFaultInjection` policy. Policies with invalid values, such as `-10kbps`, will be rejected.
+
+### MeshRetry tcp.MaxConnectAttempt
+
+With [#10250](https://github.com/kumahq/kuma/pull/10250) `MeshRetry` policies with `spec.tcp.MaxConnectAttempt=0` will be rejected.
+Prior to 2.8.x these were semantically valid but would create invalid Envoy configuration and would cause issues on the dataplane.
+Now this is rejected sooner to avoid service disruption.
+
+### Removal of legacy tokens
+
+Tokens issued from versions before 2.1.x needs to renewed before upgrading.
+
+If you observe following log in control-plane logs, please rotate your tokens before upgrade.
+```yaml
+[WARNING] Using token with KID header, you should rotate this token as it will not be valid in future versions of Kuma
+```
+* [User token](https://kuma.io/docs/2.7.x/production/secure-deployment/api-server-auth/)
+* [Dataplane token](https://kuma.io/docs/2.7.x/production/secure-deployment/dp-auth/)
+* [Zone token](https://kuma.io/docs/2.7.x/production/cp-deployment/zoneproxy-auth/#zone-token)
 
 ## Upgrade to `2.7.x`
 
@@ -205,6 +442,25 @@ This section describes changes to internal resources used by Kuma when configuri
 #### Important Note:
 
 This change is transparent with regard to the generated Envoy configuration. There should be no impact on existing traffic routing.
+
+### Gateway API Promotion to GA
+
+The Gateway API functionality within Kuma is now considered Generally Available (GA). This means the `--experimental-gatewayapi` flag and the `experimental.gatewayAPI` setting are no longer required for installation.
+
+> [!WARNING]
+> If you previously used the `--experimental-gatewayapi` flag with `kumactl install control-plane` in your workflows, it's important to note that this flag has been removed and is no longer supported. Using it will now result in an error.
+
+#### Removed Flags and Settings
+
+Previously, these flags were necessary for using the Gateway API feature:
+
+- `--experimental-gatewayapi` flag for `kumactl install control-plane` and `kumactl install crds`
+- `experimental.gatewayAPI=true` setting in both `kumactl install control-plane` and Helm charts
+
+### TLS Secrets with Gateway API in namespace other than mesh system namespace
+
+If you use TLS secrets with Gateway API for a builtin gateway deployed in any other namespace than mesh system namespace, set `controlPlane.supportGatewaySecretsInAllNamespaces` HELM value to true.
+This change was introduced so that control plane does not have capability to read content of secrets in all namespaces by default.
 
 ## Upgrade to `2.6.x`
 

@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Generate GitHub app token
         id: github-app-token
-        uses: actions/create-github-app-token@7bfa3a4717ef143a604ee0a99d859b8886a96d00 # v1.9.3
+        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -38,13 +38,13 @@ jobs:
           echo "REPO=$(gh pr view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json headRepository,headRepositoryOwner --jq '[.headRepositoryOwner.login,.headRepository.name] | join("/")')" >> $GITHUB_ENV
         env:
           GITHUB_TOKEN: ${{ steps.github-app-token.outputs.token }}
-      - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v4.1.2
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           fetch-depth: 0
           repository: ${{ env.REPO }}
           ref: ${{ env.BRANCH_NAME }}
           token: ${{ steps.github-app-token.outputs.token }}
-      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
           go-version-file: go.mod
       - uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
@@ -64,6 +64,7 @@ jobs:
         if: contains(github.event.comment.body, '/golden_files') # check the comment if it contains the keywords
         run: |
           make test UPDATE_GOLDEN_FILES=true
+          make test/transparentproxy UPDATE_GOLDEN_FILES=true
       - name: commit and push fixes
         env:
           GITHUB_TOKEN: ${{ steps.github-app-token.outputs.token }}

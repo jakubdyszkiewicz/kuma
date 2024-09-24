@@ -13,13 +13,16 @@ import (
 	kuma_cp "github.com/kumahq/kuma/pkg/config/app/kuma-cp"
 	config_core "github.com/kumahq/kuma/pkg/config/core"
 	"github.com/kumahq/kuma/pkg/core/bootstrap"
+	meshservice_generate "github.com/kumahq/kuma/pkg/core/resources/apis/meshservice/generate"
 	"github.com/kumahq/kuma/pkg/defaults"
 	"github.com/kumahq/kuma/pkg/diagnostics"
+	"github.com/kumahq/kuma/pkg/dns"
 	dp_server "github.com/kumahq/kuma/pkg/dp-server"
 	"github.com/kumahq/kuma/pkg/gc"
 	"github.com/kumahq/kuma/pkg/hds"
 	"github.com/kumahq/kuma/pkg/insights"
 	"github.com/kumahq/kuma/pkg/intercp"
+	"github.com/kumahq/kuma/pkg/ipam"
 	kds_global "github.com/kumahq/kuma/pkg/kds/global"
 	kds_zone "github.com/kumahq/kuma/pkg/kds/zone"
 	mads_server "github.com/kumahq/kuma/pkg/mads/server"
@@ -27,11 +30,12 @@ import (
 	"github.com/kumahq/kuma/pkg/util/os"
 	kuma_version "github.com/kumahq/kuma/pkg/version"
 	"github.com/kumahq/kuma/pkg/xds"
+	"github.com/kumahq/kuma/pkg/zone"
 )
 
 var runLog = controlPlaneLog.WithName("run")
 
-const gracefullyShutdownDuration = 3 * time.Second
+const gracefulShutdownDuration = 3 * time.Second
 
 // This is the open file limit below which the control plane may not
 // reasonably have enough descriptors to accept all its clients.
@@ -61,7 +65,7 @@ func newRunCmdWithOpts(opts kuma_cmd.RunCmdOpts) *cobra.Command {
 
 			kuma_cp.PrintDeprecations(&cfg, cmd.OutOrStdout())
 
-			gracefulCtx, ctx := opts.SetupSignalHandler()
+			gracefulCtx, ctx, _ := opts.SetupSignalHandler()
 			rt, err := bootstrap.Bootstrap(gracefulCtx, cfg)
 			if err != nil {
 				runLog.Error(err, "unable to set up Control Plane runtime")
@@ -145,6 +149,22 @@ func newRunCmdWithOpts(opts kuma_cmd.RunCmdOpts) *cobra.Command {
 				runLog.Error(err, "unable to set up Control Plane Intercommunication")
 				return err
 			}
+			if err := ipam.Setup(rt); err != nil {
+				runLog.Error(err, "unable to set up IPAM")
+				return err
+			}
+			if err := meshservice_generate.Setup(rt); err != nil {
+				runLog.Error(err, "unable to set up MeshService generator")
+				return err
+			}
+			if err := zone.Setup(rt); err != nil {
+				runLog.Error(err, "unable to set up ZoneIngress available services")
+				return err
+			}
+			if err := dns.SetupHostnameGenerator(rt); err != nil {
+				runLog.Error(err, "unable to set up hostname generator")
+				return err
+			}
 
 			runLog.Info("starting Control Plane", "version", kuma_version.Build.Version)
 			if err := rt.Start(gracefulCtx.Done()); err != nil {
@@ -152,11 +172,11 @@ func newRunCmdWithOpts(opts kuma_cmd.RunCmdOpts) *cobra.Command {
 				return err
 			}
 
-			runLog.Info("stop signal received. Waiting 3 seconds for components to stop gracefully...")
+			runLog.Info("stopping without error, waiting for all components to stop", "gracefulShutdownDuration", gracefulShutdownDuration)
 			select {
 			case <-ctx.Done():
 				runLog.Info("all components have stopped")
-			case <-time.After(gracefullyShutdownDuration):
+			case <-time.After(gracefulShutdownDuration):
 				runLog.Info("forcefully stopped")
 			}
 			return nil

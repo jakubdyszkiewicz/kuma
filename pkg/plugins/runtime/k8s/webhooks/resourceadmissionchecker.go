@@ -21,21 +21,44 @@ type ResourceAdmissionChecker struct {
 	Mode                         core.CpMode
 	FederatedZone                bool
 	DisableOriginLabelValidation bool
+	SystemNamespace              string
+	ZoneName                     string
 }
 
-func (c *ResourceAdmissionChecker) IsOperationAllowed(userInfo authenticationv1.UserInfo, r core_model.Resource) admission.Response {
+func (c *ResourceAdmissionChecker) IsOperationAllowed(userInfo authenticationv1.UserInfo, r core_model.Resource, ns string) admission.Response {
 	if c.isPrivilegedUser(c.AllowedUsers, userInfo) {
 		return admission.Allowed("")
 	}
 
+	if ns != "" {
+		// check only namespace-scoped resources
+		if resp := c.isNamespaceAllowed(r, ns); !resp.Allowed {
+			return resp
+		}
+	}
+
 	if !c.isResourceTypeAllowed(r.Descriptor()) {
-		return c.resourceTypeIsNotAllowedResponse(r.Descriptor().Name)
+		return *forbiddenResponse(resourceTypeNotAllowedMsg(r.Descriptor().Name, c.Mode))
 	}
 
-	if !c.isResourceAllowed(r) {
-		return c.resourceIsNotAllowedResponse()
+	if errResponse := c.isResourceAllowed(r, ns); errResponse != nil {
+		return *errResponse
 	}
 
+	return admission.Allowed("")
+}
+
+func (c *ResourceAdmissionChecker) isNamespaceAllowed(r core_model.Resource, ns string) admission.Response {
+	switch c.Mode {
+	case core.Global:
+		if ns != c.SystemNamespace {
+			return admission.Denied(fmt.Sprintf("on Global CP the policy can be created only in the system namespace:%s", c.SystemNamespace))
+		}
+	case core.Zone:
+		if r.Descriptor().AllowedOnSystemNamespaceOnly && ns != c.SystemNamespace {
+			return admission.Denied(fmt.Sprintf("resource type %v can be created only in the system namespace:%s", r.Descriptor().Name, c.SystemNamespace))
+		}
+	}
 	return admission.Allowed("")
 }
 
@@ -52,16 +75,17 @@ func (c *ResourceAdmissionChecker) isResourceTypeAllowed(d core_model.ResourceTy
 	return true
 }
 
-func (c *ResourceAdmissionChecker) isResourceAllowed(r core_model.Resource) bool {
+func (c *ResourceAdmissionChecker) isResourceAllowed(r core_model.Resource, ns string) *admission.Response {
 	if !c.FederatedZone || !r.Descriptor().IsPluginOriginated {
-		return true
+		return nil
 	}
-	if !c.DisableOriginLabelValidation {
+	if !c.DisableOriginLabelValidation && ns == c.SystemNamespace {
 		if origin, ok := core_model.ResourceOrigin(r.GetMeta()); !ok || origin != mesh_proto.ZoneResourceOrigin {
-			return false
+			return c.resourceIsNotAllowedResponse()
 		}
 	}
-	return true
+
+	return c.validateLabels(r, ns)
 }
 
 func (c *ResourceAdmissionChecker) isPrivilegedUser(allowedUsers []string, userInfo authenticationv1.UserInfo) bool {
@@ -73,8 +97,28 @@ func (c *ResourceAdmissionChecker) isPrivilegedUser(allowedUsers []string, userI
 	return slices.Contains(allowedUsers, userInfo.Username)
 }
 
-func (c *ResourceAdmissionChecker) resourceIsNotAllowedResponse() admission.Response {
-	return admission.Response{
+func (c *ResourceAdmissionChecker) validateLabels(r core_model.Resource, ns string) *admission.Response {
+	if c.Mode != core.Global {
+		resourceOrigin, originPresent := core_model.ResourceOrigin(r.GetMeta())
+		if originPresent && resourceOrigin != mesh_proto.GlobalResourceOrigin {
+			zoneTag, ok := r.GetMeta().GetLabels()[mesh_proto.ZoneTag]
+			if ok && zoneTag != c.ZoneName {
+				return forbiddenResponse(labelsNotAllowedMsg(mesh_proto.ZoneTag, c.ZoneName, zoneTag))
+			}
+		}
+	}
+
+	if r.Descriptor().IsPluginOriginated && r.Descriptor().IsPolicy {
+		if _, err := core_model.ComputePolicyRole(r.GetSpec().(core_model.Policy), ns); err != nil {
+			return forbiddenResponse(err.Error())
+		}
+	}
+
+	return nil
+}
+
+func (c *ResourceAdmissionChecker) resourceIsNotAllowedResponse() *admission.Response {
+	return &admission.Response{
 		AdmissionResponse: v1.AdmissionResponse{
 			Allowed: false,
 			Result: &metav1.Status{
@@ -96,31 +140,30 @@ func (c *ResourceAdmissionChecker) resourceIsNotAllowedResponse() admission.Resp
 	}
 }
 
-func (c *ResourceAdmissionChecker) resourceTypeIsNotAllowedResponse(resType core_model.ResourceType) admission.Response {
+func labelsNotAllowedMsg(label, correctValue, actual string) string {
+	return fmt.Sprintf("Operation not allowed. %s label should have %s value, got %s", label, correctValue, actual)
+}
+
+func resourceTypeNotAllowedMsg(resType core_model.ResourceType, mode core.CpMode) string {
 	otherCpMode := ""
-	if c.Mode == core.Zone {
+	if mode == core.Zone {
 		otherCpMode = core.Global
-	} else if c.Mode == core.Global {
+	} else if mode == core.Global {
 		otherCpMode = core.Zone
 	}
-	return admission.Response{
+	return fmt.Sprintf("Operation not allowed. %s resources like %s can be updated or deleted only "+
+		"from the %s control plane and not from a %s control plane.", version.Product, resType, strings.ToUpper(otherCpMode), strings.ToUpper(mode))
+}
+
+func forbiddenResponse(msg string) *admission.Response {
+	return &admission.Response{
 		AdmissionResponse: v1.AdmissionResponse{
 			Allowed: false,
 			Result: &metav1.Status{
-				Status: "Failure",
-				Message: fmt.Sprintf("Operation not allowed. %s resources like %s can be updated or deleted only "+
-					"from the %s control plane and not from a %s control plane.", version.Product, resType, strings.ToUpper(otherCpMode), strings.ToUpper(c.Mode)),
-				Reason: "Forbidden",
-				Code:   403,
-				Details: &metav1.StatusDetails{
-					Causes: []metav1.StatusCause{
-						{
-							Type:    "FieldValueInvalid",
-							Message: "cannot be empty",
-							Field:   "metadata.annotations[kuma.io/synced]",
-						},
-					},
-				},
+				Status:  "Failure",
+				Message: msg,
+				Reason:  "Forbidden",
+				Code:    403,
 			},
 		},
 	}

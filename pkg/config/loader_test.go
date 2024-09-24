@@ -104,8 +104,6 @@ var _ = Describe("Config loader", func() {
 			Expect(cfg.Store.Postgres.MinOpenConnections).To(Equal(3))
 			Expect(cfg.Store.Postgres.MaxOpenConnections).To(Equal(300))
 			Expect(cfg.Store.Postgres.MaxIdleConnections).To(Equal(300))
-			Expect(cfg.Store.Postgres.MinReconnectInterval.Duration).To(Equal(44 * time.Second))
-			Expect(cfg.Store.Postgres.MaxReconnectInterval.Duration).To(Equal(55 * time.Second))
 			Expect(cfg.Store.Postgres.MaxListQueryElements).To(Equal(uint32(111)))
 			Expect(cfg.Store.Postgres.MaxConnectionIdleTime.Duration).To(Equal(99 * time.Second))
 
@@ -179,18 +177,20 @@ var _ = Describe("Config loader", func() {
 			Expect(cfg.Runtime.Kubernetes.MarshalingCacheExpirationTime.Duration).To(Equal(28 * time.Second))
 
 			Expect(cfg.Runtime.Kubernetes.Injector.Exceptions.Labels).To(Equal(map[string]string{"openshift.io/build.name": "value1", "openshift.io/deployer-pod-for.name": "value2"}))
-			Expect(cfg.Runtime.Kubernetes.Injector.SidecarTraffic.ExcludeInboundPorts).To(Equal([]uint32{1234, 5678}))
 			Expect(cfg.Runtime.Kubernetes.Injector.CaCertFile).To(Equal("/tmp/ca.crt"))
+			Expect(cfg.Runtime.Kubernetes.Injector.SidecarTraffic.ExcludeInboundPorts).To(Equal([]uint32{1234, 5678}))
 			Expect(cfg.Runtime.Kubernetes.Injector.SidecarTraffic.ExcludeOutboundPorts).To(Equal([]uint32{4321, 8765}))
+			Expect(cfg.Runtime.Kubernetes.Injector.SidecarTraffic.ExcludeInboundIPs).To(Equal([]string{"192.168.0.1", "172.32.16.8/16", "a81b:a033:6399:73c7:72b6:aa8c:6f22:7098", "fe80::/10"}))
+			Expect(cfg.Runtime.Kubernetes.Injector.SidecarTraffic.ExcludeOutboundIPs).To(Equal([]string{"10.0.0.1", "172.16.0.0/16", "fe80::1", "fe80::/10"}))
 			Expect(cfg.Runtime.Kubernetes.Injector.VirtualProbesEnabled).To(BeFalse())
 			Expect(cfg.Runtime.Kubernetes.Injector.VirtualProbesPort).To(Equal(uint32(1111)))
+			Expect(cfg.Runtime.Kubernetes.Injector.ApplicationProbeProxyPort).To(Equal(uint32(1112)))
 			Expect(cfg.Runtime.Kubernetes.Injector.CNIEnabled).To(BeTrue())
 			Expect(cfg.Runtime.Kubernetes.Injector.ContainerPatches).To(Equal([]string{"patch1", "patch2"}))
 			Expect(cfg.Runtime.Kubernetes.Injector.InitContainer.Image).To(Equal("test-image:test"))
 			Expect(cfg.Runtime.Kubernetes.Injector.SidecarContainer.EnvVars).To(Equal(map[string]string{"a": "b", "c": "d"}))
 			Expect(cfg.Runtime.Kubernetes.Injector.SidecarContainer.IpFamilyMode).To(Equal("dualstack"))
 			Expect(cfg.Runtime.Kubernetes.Injector.SidecarContainer.RedirectPortInbound).To(Equal(uint32(2020)))
-			Expect(cfg.Runtime.Kubernetes.Injector.SidecarContainer.RedirectPortInboundV6).To(Equal(uint32(2021)))
 			Expect(cfg.Runtime.Kubernetes.Injector.SidecarContainer.RedirectPortOutbound).To(Equal(uint32(1010)))
 			Expect(cfg.Runtime.Kubernetes.Injector.SidecarContainer.UID).To(Equal(int64(100)))
 			Expect(cfg.Runtime.Kubernetes.Injector.SidecarContainer.GID).To(Equal(int64(1212)))
@@ -225,6 +225,7 @@ var _ = Describe("Config loader", func() {
 			Expect(cfg.Runtime.Kubernetes.Injector.EBPF.ProgramsSourcePath).To(Equal("/kuma/baz"))
 			Expect(cfg.Runtime.Kubernetes.Injector.IgnoredServiceSelectorLabels).To(Equal([]string{"x", "y"}))
 			Expect(cfg.Runtime.Kubernetes.Injector.NodeLabelsToCopy).To(Equal([]string{"label-1", "label-2"}))
+			Expect(cfg.Runtime.Kubernetes.Injector.TransparentProxyConfigMapName).To(Equal("foo"))
 			Expect(cfg.Runtime.Kubernetes.NodeTaintController.CniNamespace).To(Equal("kuma-system"))
 			Expect(cfg.Runtime.Kubernetes.ControllersConcurrency.PodController).To(Equal(10))
 			Expect(cfg.Runtime.Kubernetes.ClientConfig.Qps).To(Equal(100))
@@ -232,6 +233,7 @@ var _ = Describe("Config loader", func() {
 			Expect(cfg.Runtime.Kubernetes.LeaderElection.LeaseDuration.Duration).To(Equal(199 * time.Second))
 			Expect(cfg.Runtime.Kubernetes.LeaderElection.RenewDeadline.Duration).To(Equal(99 * time.Second))
 			Expect(cfg.Runtime.Kubernetes.SkipMeshOwnerReference).To(BeTrue())
+			Expect(cfg.Runtime.Kubernetes.SupportGatewaySecretsInAllNamespaces).To(BeTrue())
 
 			Expect(cfg.Runtime.Universal.DataplaneCleanupAge.Duration).To(Equal(1 * time.Hour))
 			Expect(cfg.Runtime.Universal.VIPRefreshInterval.Duration).To(Equal(10 * time.Second))
@@ -261,7 +263,6 @@ var _ = Describe("Config loader", func() {
 			Expect(cfg.Multizone.Global.KDS.MaxMsgSize).To(Equal(uint32(1)))
 			Expect(cfg.Multizone.Global.KDS.MsgSendTimeout.Duration).To(Equal(10 * time.Second))
 			Expect(cfg.Multizone.Global.KDS.NackBackoff.Duration).To(Equal(11 * time.Second))
-			Expect(cfg.Multizone.Global.KDS.DisableSOTW).To(BeTrue())
 			Expect(cfg.Multizone.Global.KDS.ResponseBackoff.Duration).To(Equal(time.Second))
 			Expect(cfg.Multizone.Global.KDS.ZoneHealthCheck.PollInterval.Duration).To(Equal(11 * time.Second))
 			Expect(cfg.Multizone.Global.KDS.ZoneHealthCheck.Timeout.Duration).To(Equal(110 * time.Second))
@@ -278,6 +279,7 @@ var _ = Describe("Config loader", func() {
 			Expect(cfg.Defaults.SkipMeshCreation).To(BeTrue())
 			Expect(cfg.Defaults.SkipTenantResources).To(BeTrue())
 			Expect(cfg.Defaults.CreateMeshRoutingResources).To(BeTrue())
+			Expect(cfg.Defaults.SkipHostnameGenerators).To(BeTrue())
 
 			Expect(cfg.Diagnostics.ServerPort).To(Equal(uint32(5003)))
 			Expect(cfg.Diagnostics.DebugEndpoints).To(BeTrue())
@@ -358,9 +360,7 @@ var _ = Describe("Config loader", func() {
 			Expect(cfg.Access.Static.ControlPlaneMetadata.Users).To(Equal([]string{"cp-admin1", "cp-admin2"}))
 			Expect(cfg.Access.Static.ControlPlaneMetadata.Groups).To(Equal([]string{"cp-group1", "cp-group2"}))
 
-			Expect(cfg.Experimental.GatewayAPI).To(BeTrue())
 			Expect(cfg.Experimental.KubeOutboundsAsVIPs).To(BeTrue())
-			Expect(cfg.Experimental.KDSDeltaEnabled).To(BeTrue())
 			Expect(cfg.Experimental.UseTagFirstVirtualOutboundModel).To(BeFalse())
 			Expect(cfg.Experimental.IngressTagFilters).To(ContainElements("kuma.io/service"))
 			Expect(cfg.Experimental.KDSEventBasedWatchdog.Enabled).To(BeTrue())
@@ -374,6 +374,17 @@ var _ = Describe("Config loader", func() {
 
 			Expect(cfg.Proxy.Gateway.GlobalDownstreamMaxConnections).To(BeNumerically("==", 1))
 			Expect(cfg.EventBus.BufferSize).To(Equal(uint(30)))
+
+			Expect(cfg.IPAM.MeshService.CIDR).To(Equal("251.0.0.0/8"))
+			Expect(cfg.IPAM.MeshExternalService.CIDR).To(Equal("252.0.0.0/8"))
+			Expect(cfg.IPAM.MeshMultiZoneService.CIDR).To(Equal("253.0.0.0/8"))
+			Expect(cfg.IPAM.AllocationInterval.Duration).To(Equal(7 * time.Second))
+			Expect(cfg.MeshService.GenerationInterval.Duration).To(Equal(8 * time.Second))
+			Expect(cfg.MeshService.DeletionGracePeriod.Duration).To(Equal(11 * time.Second))
+
+			Expect(cfg.CoreResources.Enabled).To(Equal([]string{"meshservice"}))
+			Expect(cfg.CoreResources.Status.MeshServiceInterval.Duration).To(Equal(6 * time.Second))
+			Expect(cfg.CoreResources.Status.MeshMultiZoneServiceInterval.Duration).To(Equal(7 * time.Second))
 		},
 		Entry("from config file", testCase{
 			envVars: map[string]string{},
@@ -500,6 +511,7 @@ runtime:
       caCertFile: /tmp/ca.crt
       virtualProbesEnabled: false
       virtualProbesPort: 1111
+      applicationProbeProxyPort: 1112
       containerPatches: ["patch1", "patch2"]
       initContainer:
         image: test-image:test
@@ -507,7 +519,6 @@ runtime:
         waitForDataplaneReady: true
         image: image:test
         redirectPortInbound: 2020
-        redirectPortInboundV6: 2021
         redirectPortOutbound: 1010
         uid: 100
         gid: 1212
@@ -546,6 +557,16 @@ runtime:
         excludeOutboundPorts:
         - 4321
         - 8765
+        excludeInboundIPs:
+        - 192.168.0.1
+        - 172.32.16.8/16
+        - a81b:a033:6399:73c7:72b6:aa8c:6f22:7098
+        - fe80::/10
+        excludeOutboundIPs:
+        - 10.0.0.1
+        - 172.16.0.0/16
+        - fe80::1
+        - fe80::/10
       builtinDNS:
         enabled: true
         port: 1053
@@ -559,6 +580,7 @@ runtime:
         programsSourcePath: /kuma/baz
       ignoredServiceSelectorLabels: ["x", "y"]
       nodeLabelsToCopy: ["label-1", "label-2"]
+      transparentProxyConfigMap: foo
     controllersConcurrency: 
       podController: 10
     clientConfig:
@@ -568,6 +590,7 @@ runtime:
       leaseDuration: 199s
       renewDeadline: 99s
     skipMeshOwnerReference: true
+    supportGatewaySecretsInAllNamespaces: true
 reports:
   enabled: false
 general:
@@ -595,7 +618,6 @@ multizone:
       msgSendTimeout: 10s
       nackBackoff: 11s
       responseBackoff: 1s
-      disableSOTW: true
       zoneHealthCheck:
         pollInterval: 11s
         timeout: 110s
@@ -611,6 +633,7 @@ multizone:
       responseBackoff: 2s
       tlsSkipVerify: true
     disableOriginLabelValidation: true
+    ingressUpdateInterval: 2s
 dnsServer:
   domain: test-domain
   CIDR: 127.1.0.0/16
@@ -618,6 +641,7 @@ dnsServer:
   serviceVipPort: 9090
 defaults:
   skipMeshCreation: true
+  skipHostnameGenerators: true
   skipTenantResources: true
   createMeshRoutingResources: true
 diagnostics:
@@ -719,10 +743,8 @@ access:
       users: ["cp-admin1", "cp-admin2"]
       groups: ["cp-group1", "cp-group2"]
 experimental:
-  gatewayAPI: true
   kubeOutboundsAsVIPs: true
   cniApp: "kuma-cni"
-  kdsDeltaEnabled: true
   useTagFirstVirtualOutboundModel: false
   ingressTagFilters: ["kuma.io/service"]
   kdsEventBasedWatchdog:
@@ -742,6 +764,9 @@ eventBus:
 coreResources:
   enabled:
   - meshservice
+  status:
+    meshServiceInterval: 6s
+    meshMultiZoneServiceInterval: 7s
 policies:
   pluginPoliciesEnabled:
     - meshaccesslog
@@ -750,6 +775,17 @@ tracing:
   openTelemetry:
     enabled: true
     endpoint: collector:4317
+ipam:
+  meshService:
+    cidr: 251.0.0.0/8
+  meshExternalService:
+    cidr: 252.0.0.0/8
+  meshMultiZoneService:
+    cidr: 253.0.0.0/8
+  allocationInterval: 7s
+meshService:
+  generationInterval: 8s
+  deletionGracePeriod: 11s
 `,
 		}),
 		Entry("from env variables", testCase{
@@ -782,8 +818,6 @@ tracing:
 				"KUMA_STORE_POSTGRES_TLS_KEY_PATH":                                                         "/path/to/key",
 				"KUMA_STORE_POSTGRES_TLS_CA_PATH":                                                          "/path/to/rootCert",
 				"KUMA_STORE_POSTGRES_TLS_DISABLE_SSLSNI":                                                   "true",
-				"KUMA_STORE_POSTGRES_MIN_RECONNECT_INTERVAL":                                               "44s",
-				"KUMA_STORE_POSTGRES_MAX_RECONNECT_INTERVAL":                                               "55s",
 				"KUMA_STORE_POSTGRES_MAX_LIST_QUERY_ELEMENTS":                                              "111",
 				"KUMA_STORE_POSTGRES_READ_REPLICA_HOST":                                                    "ro.host",
 				"KUMA_STORE_POSTGRES_READ_REPLICA_PORT":                                                    "35432",
@@ -842,6 +876,8 @@ tracing:
 				"KUMA_RUNTIME_KUBERNETES_ADMISSION_SERVER_CERT_DIR":                                        "/var/run/secrets/kuma.io/kuma-admission-server/tls-cert",
 				"KUMA_RUNTIME_KUBERNETES_SIDECAR_TRAFFIC_EXCLUDE_INBOUND_PORTS":                            "1234,5678",
 				"KUMA_RUNTIME_KUBERNETES_SIDECAR_TRAFFIC_EXCLUDE_OUTBOUND_PORTS":                           "4321,8765",
+				"KUMA_RUNTIME_KUBERNETES_SIDECAR_TRAFFIC_EXCLUDE_INBOUND_IPS":                              "192.168.0.1,172.32.16.8/16,a81b:a033:6399:73c7:72b6:aa8c:6f22:7098,fe80::/10",
+				"KUMA_RUNTIME_KUBERNETES_SIDECAR_TRAFFIC_EXCLUDE_OUTBOUND_IPS":                             "10.0.0.1,172.16.0.0/16,fe80::1,fe80::/10",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_CA_CERT_FILE":                                            "/tmp/ca.crt",
 				"KUMA_RUNTIME_KUBERNETES_MARSHALING_CACHE_EXPIRATION_TIME":                                 "28s",
 				"KUMA_INJECTOR_INIT_CONTAINER_IMAGE":                                                       "test-image:test",
@@ -851,7 +887,6 @@ tracing:
 				"KUMA_INJECTOR_SIDECAR_CONTAINER_RESOURCES_LIMITS_CPU":                                     "100m",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_CONTAINER_PATCHES":                                       "patch1,patch2",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_REDIRECT_PORT_INBOUND":                 "2020",
-				"KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_REDIRECT_PORT_INBOUND_V6":              "2021",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_IP_FAMILY_MODE":                        "dualstack",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_REDIRECT_PORT_OUTBOUND":                "1010",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_CNI_ENABLED":                                             "true",
@@ -885,9 +920,11 @@ tracing:
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_EBPF_TC_ATTACH_IFACE":                                    "veth1",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_EBPF_PROGRAMS_SOURCE_PATH":                               "/kuma/baz",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_IGNORED_SERVICE_SELECTOR_LABELS":                         "x,y",
+				"KUMA_RUNTIME_KUBERNETES_INJECTOR_TRANSPARENT_PROXY_CONFIGMAP_NAME":                        "foo",
 				"KUMA_RUNTIME_KUBERNETES_INJECTOR_NODE_LABELS_TO_COPY":                                     "label-1,label-2",
 				"KUMA_RUNTIME_KUBERNETES_VIRTUAL_PROBES_ENABLED":                                           "false",
 				"KUMA_RUNTIME_KUBERNETES_VIRTUAL_PROBES_PORT":                                              "1111",
+				"KUMA_RUNTIME_KUBERNETES_APPLICATION_PROBE_PROXY_PORT":                                     "1112",
 				"KUMA_RUNTIME_KUBERNETES_EXCEPTIONS_LABELS":                                                "openshift.io/build.name:value1,openshift.io/deployer-pod-for.name:value2",
 				"KUMA_RUNTIME_KUBERNETES_CONTROLLERS_CONCURRENCY_POD_CONTROLLER":                           "10",
 				"KUMA_RUNTIME_KUBERNETES_CLIENT_CONFIG_QPS":                                                "100",
@@ -895,6 +932,7 @@ tracing:
 				"KUMA_RUNTIME_KUBERNETES_LEADER_ELECTION_LEASE_DURATION":                                   "199s",
 				"KUMA_RUNTIME_KUBERNETES_LEADER_ELECTION_RENEW_DEADLINE":                                   "99s",
 				"KUMA_RUNTIME_KUBERNETES_SKIP_MESH_OWNER_REFERENCE":                                        "true",
+				"KUMA_RUNTIME_KUBERNETES_SUPPORT_GATEWAY_SECRETS_IN_ALL_NAMESPACES":                        "true",
 				"KUMA_RUNTIME_UNIVERSAL_DATAPLANE_CLEANUP_AGE":                                             "1h",
 				"KUMA_RUNTIME_UNIVERSAL_VIP_REFRESH_INTERVAL":                                              "10s",
 				"KUMA_GENERAL_TLS_CERT_FILE":                                                               "/tmp/cert",
@@ -924,7 +962,6 @@ tracing:
 				"KUMA_MULTIZONE_GLOBAL_KDS_MSG_SEND_TIMEOUT":                                               "10s",
 				"KUMA_MULTIZONE_GLOBAL_KDS_NACK_BACKOFF":                                                   "11s",
 				"KUMA_MULTIZONE_GLOBAL_KDS_RESPONSE_BACKOFF":                                               "1s",
-				"KUMA_MULTIZONE_GLOBAL_KDS_DISABLE_SOTW":                                                   "true",
 				"KUMA_MULTIZONE_GLOBAL_KDS_ZONE_HEALTH_CHECK_POLL_INTERVAL":                                "11s",
 				"KUMA_MULTIZONE_GLOBAL_KDS_ZONE_HEALTH_CHECK_TIMEOUT":                                      "110s",
 				"KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS":                                                       "grpc://1.1.1.1:5685",
@@ -937,9 +974,10 @@ tracing:
 				"KUMA_MULTIZONE_ZONE_KDS_RESPONSE_BACKOFF":                                                 "2s",
 				"KUMA_MULTIZONE_ZONE_KDS_TLS_SKIP_VERIFY":                                                  "true",
 				"KUMA_MULTIZONE_ZONE_DISABLE_ORIGIN_LABEL_VALIDATION":                                      "true",
-				"KUMA_EXPERIMENTAL_KDS_DELTA_ENABLED":                                                      "true",
+				"KUMA_MULTIZONE_ZONE_INGRESS_UPDATE_INTERVAL":                                              "2s",
 				"KUMA_MULTIZONE_GLOBAL_KDS_ZONE_INSIGHT_FLUSH_INTERVAL":                                    "5s",
 				"KUMA_DEFAULTS_SKIP_MESH_CREATION":                                                         "true",
+				"KUMA_DEFAULTS_SKIP_HOSTNAME_GENERATORS":                                                   "true",
 				"KUMA_DEFAULTS_SKIP_TENANT_RESOURCES":                                                      "true",
 				"KUMA_DEFAULTS_CREATE_MESH_ROUTING_RESOURCES":                                              "true",
 				"KUMA_DIAGNOSTICS_SERVER_PORT":                                                             "5003",
@@ -1012,7 +1050,6 @@ tracing:
 				"KUMA_ACCESS_STATIC_VIEW_CLUSTERS_GROUPS":                                                  "zt-group1,zt-group2",
 				"KUMA_ACCESS_STATIC_CONTROL_PLANE_METADATA_USERS":                                          "cp-admin1,cp-admin2",
 				"KUMA_ACCESS_STATIC_CONTROL_PLANE_METADATA_GROUPS":                                         "cp-group1,cp-group2",
-				"KUMA_EXPERIMENTAL_GATEWAY_API":                                                            "true",
 				"KUMA_EXPERIMENTAL_KUBE_OUTBOUNDS_AS_VIPS":                                                 "true",
 				"KUMA_EXPERIMENTAL_USE_TAG_FIRST_VIRTUAL_OUTBOUND_MODEL":                                   "false",
 				"KUMA_EXPERIMENTAL_INGRESS_TAG_FILTERS":                                                    "kuma.io/service",
@@ -1030,6 +1067,14 @@ tracing:
 				"KUMA_EVENT_BUS_BUFFER_SIZE":                                                               "30",
 				"KUMA_PLUGIN_POLICIES_ENABLED":                                                             "meshaccesslog,meshcircuitbreaker",
 				"KUMA_CORE_RESOURCES_ENABLED":                                                              "meshservice",
+				"KUMA_CORE_RESOURCES_STATUS_MESH_SERVICE_INTERVAL":                                         "6s",
+				"KUMA_CORE_RESOURCES_STATUS_MESH_MULTI_ZONE_SERVICE_INTERVAL":                              "7s",
+				"KUMA_IPAM_MESH_SERVICE_CIDR":                                                              "251.0.0.0/8",
+				"KUMA_IPAM_MESH_EXTERNAL_SERVICE_CIDR":                                                     "252.0.0.0/8",
+				"KUMA_IPAM_MESH_MULTI_ZONE_SERVICE_CIDR":                                                   "253.0.0.0/8",
+				"KUMA_IPAM_ALLOCATION_INTERVAL":                                                            "7s",
+				"KUMA_MESH_SERVICE_GENERATION_INTERVAL":                                                    "8s",
+				"KUMA_MESH_SERVICE_DELETION_GRACE_PERIOD":                                                  "11s",
 			},
 			yamlFileConfig: "",
 		}),

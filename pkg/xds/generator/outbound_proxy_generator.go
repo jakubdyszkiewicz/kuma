@@ -12,6 +12,7 @@ import (
 	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 	"github.com/kumahq/kuma/pkg/core/user"
 	model "github.com/kumahq/kuma/pkg/core/xds"
+	xds_types "github.com/kumahq/kuma/pkg/core/xds/types"
 	util_maps "github.com/kumahq/kuma/pkg/util/maps"
 	util_protocol "github.com/kumahq/kuma/pkg/util/protocol"
 	xds_context "github.com/kumahq/kuma/pkg/xds/context"
@@ -23,7 +24,7 @@ import (
 	envoy_tags "github.com/kumahq/kuma/pkg/xds/envoy/tags"
 )
 
-var outboundLog = core.Log.WithName("outbound-proxy-generator")
+var outboundLog = core.Log.WithName("xds").WithName("outbound-proxy-generator")
 
 // OriginOutbound is a marker to indicate by which ProxyGenerator resources were generated.
 const OriginOutbound = "outbound"
@@ -464,7 +465,7 @@ func (o OutboundWithMultipleIPs) AdditionalAddresses() []mesh_proto.OutboundInte
 	return nil
 }
 
-func buildOutboundsWithMultipleIPs(dataplane *core_mesh.DataplaneResource, outbounds []*mesh_proto.Dataplane_Networking_Outbound, meshVIPDomains []model.VIPDomains) []OutboundWithMultipleIPs {
+func buildOutboundsWithMultipleIPs(dataplane *core_mesh.DataplaneResource, outbounds []*mesh_proto.Dataplane_Networking_Outbound, meshVIPDomains []xds_types.VIPDomains) []OutboundWithMultipleIPs {
 	kumaVIPs := map[string]bool{}
 	for _, vipDomain := range meshVIPDomains {
 		kumaVIPs[vipDomain.Address] = true

@@ -122,6 +122,17 @@
    "isOutbound": false
   },
   {
+   "name": "MeshPassthrough",
+   "readOnly": false,
+   "path": "meshpassthroughs",
+   "singularDisplayName": "Mesh Passthrough",
+   "pluralDisplayName": "Mesh Passthroughs",
+   "isExperimental": false,
+   "isTargetRefBased": true,
+   "isInbound": false,
+   "isOutbound": false
+  },
+  {
    "name": "MeshProxyPatch",
    "readOnly": false,
    "path": "meshproxypatches",
@@ -164,6 +175,17 @@
    "isTargetRefBased": true,
    "isInbound": false,
    "isOutbound": true
+  },
+  {
+   "name": "MeshTLS",
+   "readOnly": false,
+   "path": "meshtlses",
+   "singularDisplayName": "Mesh TLS",
+   "pluralDisplayName": "Mesh TLSes",
+   "isExperimental": false,
+   "isTargetRefBased": true,
+   "isInbound": true,
+   "isOutbound": false
   },
   {
    "name": "MeshTimeout",

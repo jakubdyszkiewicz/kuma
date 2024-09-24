@@ -17,7 +17,7 @@ import (
 	"helm.sh/helm/v3/pkg/engine"
 	"k8s.io/client-go/rest"
 
-	"github.com/kumahq/kuma/app/kumactl/pkg/install/data"
+	"github.com/kumahq/kuma/pkg/util/data"
 )
 
 func labelRegex(label string) *regexp.Regexp {
@@ -25,9 +25,9 @@ func labelRegex(label string) *regexp.Regexp {
 }
 
 var stripLabelsRegexps = []*regexp.Regexp{
-	labelRegex("app.kubernetes.io/managed-by"),
-	labelRegex("helm.sh/chart"),
-	labelRegex("app.kubernetes.io/version"),
+	labelRegex("app\\.kubernetes\\.io/managed-by"),
+	labelRegex("helm\\.sh/chart"),
+	labelRegex("app\\.kubernetes\\.io/version"),
 }
 
 var kumaSystemNamespace = func(namespace string) string {

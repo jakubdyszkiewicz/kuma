@@ -10,16 +10,17 @@ type BootstrapRequest struct {
 	Host               string  `json:"-"`
 	Version            Version `json:"version"`
 	// CaCert is a PEM-encoded CA cert that DP uses to verify CP
-	CaCert              string            `json:"caCert"`
-	DynamicMetadata     map[string]string `json:"dynamicMetadata"`
-	DNSPort             uint32            `json:"dnsPort,omitempty"`
-	EmptyDNSPort        uint32            `json:"emptyDnsPort,omitempty"`
-	OperatingSystem     string            `json:"operatingSystem"`
-	Features            []string          `json:"features"`
-	Resources           ProxyResources    `json:"resources"`
-	Workdir             string            `json:"workdir"`
-	AccessLogSocketPath string            `json:"accessLogSocketPath"`
-	MetricsResources    MetricsResources  `json:"metricsResources"`
+	CaCert               string            `json:"caCert"`
+	DynamicMetadata      map[string]string `json:"dynamicMetadata"`
+	DNSPort              uint32            `json:"dnsPort,omitempty"`
+	ReadinessPort        uint32            `json:"readinessPort,omitempty"`
+	AppProbeProxyEnabled bool              `json:"appProbeProxyDisabled,omitempty"`
+	OperatingSystem      string            `json:"operatingSystem"`
+	Features             []string          `json:"features"`
+	Resources            ProxyResources    `json:"resources"`
+	Workdir              string            `json:"workdir"`
+	MetricsResources     MetricsResources  `json:"metricsResources"`
+	SystemCaPath         string            `json:"systemCaPath"`
 }
 
 type Version struct {
@@ -28,9 +29,8 @@ type Version struct {
 }
 
 type MetricsResources struct {
-	SocketPath string `json:"socketPath"`
-	CertPath   string `json:"certPath"`
-	KeyPath    string `json:"keyPath"`
+	CertPath string `json:"certPath"`
+	KeyPath  string `json:"keyPath"`
 }
 
 type KumaDpVersion struct {

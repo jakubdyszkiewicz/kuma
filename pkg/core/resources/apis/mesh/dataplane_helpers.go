@@ -8,8 +8,11 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	common_api "github.com/kumahq/kuma/api/common/v1alpha1"
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
-	"github.com/kumahq/kuma/pkg/core/resources/model"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	xds_types "github.com/kumahq/kuma/pkg/core/xds/types"
+	"github.com/kumahq/kuma/pkg/util/pointer"
 	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
@@ -19,6 +22,7 @@ type Protocol string
 const (
 	ProtocolUnknown = "<unknown>"
 	ProtocolTCP     = "tcp"
+	ProtocolTLS     = "tls"
 	ProtocolHTTP    = "http"
 	ProtocolHTTP2   = "http2"
 	ProtocolGRPC    = "grpc"
@@ -33,6 +37,8 @@ func ParseProtocol(tag string) Protocol {
 		return ProtocolHTTP2
 	case ProtocolTCP:
 		return ProtocolTCP
+	case ProtocolTLS:
+		return ProtocolTLS
 	case ProtocolGRPC:
 		return ProtocolGRPC
 	case ProtocolKafka:
@@ -187,29 +193,17 @@ func (d *DataplaneResource) IsUsingTransparentProxy() bool {
 	if d == nil {
 		return false
 	}
-	if d.Spec.GetNetworking() == nil {
-		return false
-	}
 
 	tproxy := d.Spec.GetNetworking().GetTransparentProxying()
-	if tproxy == nil {
+
+	switch {
+	case tproxy == nil, tproxy.GetRedirectPortInbound() == 0, tproxy.GetRedirectPortOutbound() == 0:
 		return false
+	case d.IsIPv6():
+		return tproxy.GetIpFamilyMode() != mesh_proto.Dataplane_Networking_TransparentProxying_IPv4
+	default:
+		return true
 	}
-
-	isUsingTransparentProxy := tproxy.RedirectPortInbound != 0 && tproxy.RedirectPortOutbound != 0
-
-	if d.IsIPv6() {
-		// for data planes created earlier than when `IpFamilyMode` is added,
-		// we use the presence of `RedirectPortInboundV6` to determine
-		if tproxy.GetIpFamilyMode() == mesh_proto.Dataplane_Networking_TransparentProxying_UnSpecified {
-			isUsingTransparentProxy = tproxy.RedirectPortInboundV6 != 0
-		} else {
-			isUsingTransparentProxy = isUsingTransparentProxy &&
-				tproxy.GetIpFamilyMode() != mesh_proto.Dataplane_Networking_TransparentProxying_IPv4
-		}
-	}
-
-	return isUsingTransparentProxy
 }
 
 func (d *DataplaneResource) AdminAddress(defaultAdminPort uint32) string {
@@ -233,8 +227,33 @@ func (d *DataplaneResource) AdminPort(defaultAdminPort uint32) uint32 {
 
 func (d *DataplaneResource) Hash() []byte {
 	hasher := fnv.New128a()
-	_, _ = hasher.Write(model.HashMeta(d))
+	_, _ = hasher.Write(core_model.HashMeta(d))
 	_, _ = hasher.Write([]byte(d.Spec.GetNetworking().GetAddress()))
 	_, _ = hasher.Write([]byte(d.Spec.GetNetworking().GetAdvertisedAddress()))
 	return hasher.Sum(nil)
+}
+
+func (d *DataplaneResource) AsOutbounds(resolver core_model.LabelResourceIdentifierResolver) xds_types.Outbounds {
+	var outbounds xds_types.Outbounds
+	for _, o := range d.Spec.Networking.Outbound {
+		if o.BackendRef != nil {
+			// convert proto BackendRef to common_api.BackendRef
+			backendRef := common_api.BackendRef{
+				TargetRef: common_api.TargetRef{
+					Kind:   common_api.TargetRefKind(o.BackendRef.Kind),
+					Name:   o.BackendRef.Name,
+					Labels: o.BackendRef.Labels,
+				},
+				Port: pointer.To(o.BackendRef.Port),
+			}
+			outbounds = append(outbounds, &xds_types.Outbound{
+				Address:  o.Address,
+				Port:     o.Port,
+				Resource: core_model.ResolveBackendRef(d.GetMeta(), backendRef, resolver).ResourceOrNil(),
+			})
+		} else {
+			outbounds = append(outbounds, &xds_types.Outbound{LegacyOutbound: o})
+		}
+	}
+	return outbounds
 }

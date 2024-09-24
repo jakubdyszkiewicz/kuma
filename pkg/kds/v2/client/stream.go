@@ -77,6 +77,9 @@ func (s *stream) DeltaDiscoveryRequest(resourceType core_model.ResourceType) err
 						Values: []*structpb.Value{
 							{Kind: &structpb.Value_StringValue{StringValue: kds.FeatureZoneToken}},
 							{Kind: &structpb.Value_StringValue{StringValue: kds.FeatureHashSuffix}},
+							{Kind: &structpb.Value_StringValue{StringValue: kds.FeatureHostnameGeneratorMzSelector}},
+							{Kind: &structpb.Value_StringValue{StringValue: kds.FeatureProducerPolicyFlow}},
+							{Kind: &structpb.Value_StringValue{StringValue: kds.FeatureOptionalTopLevelTargetRef}},
 						},
 					}}},
 				},
@@ -112,7 +115,7 @@ func (s *stream) Receive() (UpstreamResponse, error) {
 		AddedResources:      rs,
 		RemovedResourcesKey: s.mapRemovedResources(resp.RemovedResources),
 		IsInitialRequest:    isInitialRequest,
-	}, nil
+	}, err
 }
 
 func (s *stream) ACK(resourceType core_model.ResourceType) error {

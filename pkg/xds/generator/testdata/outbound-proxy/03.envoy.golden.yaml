@@ -6,6 +6,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     lbPolicy: RANDOM
     name: api-grpc
@@ -25,6 +26,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     name: api-http
     outlierDetection:
@@ -48,6 +50,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     lbPolicy: RING_HASH
     name: api-http2
@@ -70,6 +73,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     lbPolicy: LEAST_REQUEST
     leastRequestLbConfig:
@@ -88,6 +92,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     lbPolicy: MAGLEV
     name: backend
@@ -104,6 +109,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     name: db-c182dd9f4bf584d7
     type: EDS
@@ -119,6 +125,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     name: db-f7d9086d4169338b
     type: EDS
@@ -382,7 +389,7 @@ resources:
                 textFormatSource:
                   inlineString: |
                     logstash:1234;[%START_TIME%] %RESPONSE_FLAGS% mesh1 10.0.0.1(gateway)->%UPSTREAM_HOST%(api-tcp) took %DURATION%ms, sent %BYTES_SENT% bytes, received: %BYTES_RECEIVED% bytes
-              path: /foo/log
+              path: kuma-al-side-car-default.sock
           cluster: api-tcp
           idleTimeout: 101s
           statPrefix: api-tcp

@@ -42,7 +42,6 @@ store:
     maxOpenConnections: 50 # ENV: KUMA_STORE_POSTGRES_MAX_OPEN_CONNECTIONS
     # MaxIdleConnections is the maximum number of connections in the idle connection pool
     # <0 value means no idle connections and 0 means default max idle connections.
-    # Deprecated: it's only used when driverName=postgres (lib/pq) which is deprecated, use driverName=pgx instead.
     maxIdleConnections: 50 # ENV: KUMA_STORE_POSTGRES_MAX_IDLE_CONNECTIONS
     # MaxListQueryElements defines maximum number of changed elements before requesting full list of elements from the store.
     maxListQueryElements: 0 # ENV: KUMA_STORE_POSTGRES_MAX_LIST_QUERY_ELEMENTS
@@ -56,17 +55,6 @@ store:
       keyPath: # ENV: KUMA_STORE_POSTGRES_TLS_KEY_PATH
       # Path to the root certificate. Used in verifyCa and verifyFull modes.
       caPath: # ENV: KUMA_STORE_POSTGRES_TLS_ROOT_CERT_PATH
-    # MinReconnectInterval controls the duration to wait before trying to
-    # re-establish the database connection after connection loss. After each
-    # consecutive failure this interval is doubled, until MaxReconnectInterval
-    # is reached. Successfully completing the connection establishment procedure
-    # resets the interval back to MinReconnectInterval.
-    # Deprecated: it's only used when driverName=postgres (lib/pq) which is deprecated, use driverName=pgx instead.
-    minReconnectInterval: "10s" # ENV: KUMA_STORE_POSTGRES_MIN_RECONNECT_INTERVAL
-    # MaxReconnectInterval controls the maximum possible duration to wait before trying
-    # to re-establish the database connection after connection loss.
-    # Deprecated: it's only used when driverName=postgres (lib/pq) which is deprecated, use driverName=pgx instead.
-    maxReconnectInterval: "60s" # ENV: KUMA_STORE_POSTGRES_MAX_RECONNECT_INTERVAL
     # ReadReplica is a setting for a DB replica used only for read queries
     readReplica:
       # Host of the Postgres DB read replica. If not set, read replica is not used.
@@ -256,12 +244,14 @@ runtime:
         labels:
           openshift.io/build.name: "*"
           openshift.io/deployer-pod-for.name: "*"
-      # VirtualProbesEnabled enables automatic converting HttpGet probes to virtual. Virtual probe
-      #	serves on sub-path of insecure port 'virtualProbesPort',
+      # (Deprecated, set ApplicationProbeProxyPort to 0 to disable probe proxying) VirtualProbesEnabled enables automatic converting HttpGet probes to virtual.
+      #	Virtual probe serves on sub-path of insecure port 'virtualProbesPort',
       #	i.e :8080/health/readiness -> :9000/8080/health/readiness where 9000 is virtualProbesPort
       virtualProbesEnabled: true # ENV: KUMA_RUNTIME_KUBERNETES_VIRTUAL_PROBES_ENABLED
-      # VirtualProbesPort is a port for exposing virtual probes which are not secured by mTLS
+      # (Deprecated, use ApplicationProbeProxyPort instead) VirtualProbesPort is a port for exposing virtual probes which are not secured by mTLS
       virtualProbesPort: 9000 # ENV: KUMA_RUNTIME_KUBERNETES_VIRTUAL_PROBES_PORT
+      # ApplicationProbeProxyPort is a port for proxying application probes, it is not secured by mTLS. By setting to 0, probe proxying will be disabled.
+      applicationProbeProxyPort: 9001 # ENV: KUMA_RUNTIME_KUBERNETES_APPLICATION_PROBE_PROXY_PORT
       # CaCertFile is CA certificate which will be used to verify a connection to the control plane.
       caCertFile: # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_CA_CERT_FILE
       # SidecarContainer defines configuration of the Kuma sidecar container.
@@ -270,9 +260,6 @@ runtime:
         image: kuma/kuma-dp:latest # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_IMAGE
         # Redirect port for inbound traffic.
         redirectPortInbound: 15006 # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_REDIRECT_PORT_INBOUND
-        # Redirect port for inbound traffic.
-        # Deprecated: Use redirectPortInbound or ipFamilyMode instead.
-        redirectPortInboundV6: 15006 # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_REDIRECT_PORT_INBOUND_V6
         # IP family mode enabled for traffic redirection, can be 'dualstack' or 'ipv4'
         ipFamilyMode: dualstack # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_SIDECAR_CONTAINER_IP_FAMILY_MODE
         # Redirect port for outbound traffic.
@@ -349,6 +336,14 @@ runtime:
         # List of outbound ports that will be excluded from interception.
         # This setting is applied on every pod unless traffic.kuma.io/exclude-oubound-ports annotation is specified on Pod.
         excludeOutboundPorts: [] # ENV: KUMA_RUNTIME_KUBERNETES_SIDECAR_TRAFFIC_EXCLUDE_OUTBOUND_PORTS
+        # List of inbound IP addresses that will be excluded from interception.
+        # This setting is applied on every pod unless traffic.kuma.io/exclude-inbound-ips annotation is specified on the Pod.
+        # IP addresses can be specified with or without CIDR notation, and multiple addresses can be separated by commas.
+        excludeInboundIPs: [] # ENV: KUMA_RUNTIME_KUBERNETES_SIDECAR_TRAFFIC_EXCLUDE_INBOUND_IPS
+        # List of outbound IP addresses that will be excluded from interception.
+        # This setting is applied on every pod unless traffic.kuma.io/exclude-outbound-ips annotation is specified on the Pod.
+        # IP addresses can be specified with or without CIDR notation, and multiple addresses can be separated by commas.
+        excludeOutboundIPs: [] # ENV: KUMA_RUNTIME_KUBERNETES_SIDECAR_TRAFFIC_EXCLUDE_OUTBOUND_IPS
       builtinDNS:
         # Use the built-in DNS
         enabled: true # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_BUILTIN_DNS_ENABLED
@@ -378,7 +373,7 @@ runtime:
       # An example of this is ArgoCD's BlueGreen deployment and "rollouts-pod-template-hash" selector.
       ignoredServiceSelectorLabels: [] # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_IGNORED_SERVICE_SELECTOR_LABELS
       # nodeLabelsToCopy defines a list of node labels that should be copied to the Pod.
-      nodeLabelsToCopy: ["topology.kubernetes.io/zone", "topology.kubernetes.io/region"] # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_NODE_LABELS_TO_COPY
+      nodeLabelsToCopy: ["topology.kubernetes.io/zone", "topology.kubernetes.io/region", "kubernetes.io/hostname"] # ENV: KUMA_RUNTIME_KUBERNETES_INJECTOR_NODE_LABELS_TO_COPY
     marshalingCacheExpirationTime: 5m # ENV: KUMA_RUNTIME_KUBERNETES_MARSHALING_CACHE_EXPIRATION_TIME
     # Kubernetes's resources reconciliation concurrency configuration
     controllersConcurrency:
@@ -405,6 +400,9 @@ runtime:
     # If this is set to true, deleting a Mesh will not delete resources that belong to that Mesh.
     # This can be useful when resources are managed in Argo CD where creation/deletion is managed there.
     skipMeshOwnerReference: false # ENV: KUMA_RUNTIME_KUBERNETES_SKIP_MESH_OWNER_REFERENCE
+    # If true, then control plane can support TLS secrets for builtin gateway outside of mesh system namespace.
+    # The downside is that control plane requires permission to read Secrets in all namespaces.
+    supportGatewaySecretsInAllNamespaces: false # ENV: KUMA_RUNTIME_KUBERNETES_SUPPORT_GATEWAY_SECRETS_IN_ALL_NAMESPACES
   # Universal-specific configuration
   universal:
     # DataplaneCleanupAge defines how long Dataplane should be offline to be cleaned up by GC
@@ -417,8 +415,10 @@ defaults:
   skipMeshCreation: false # ENV: KUMA_DEFAULTS_SKIP_MESH_CREATION
   # If true, it skips creating the default tenant resources
   skipTenantResources: false # ENV: KUMA_DEFAULTS_SKIP_TENANT_RESOURCES
-  # If true, it creates the default routing (TrafficPermisson and TrafficRoute) resources for a new Mesh
+  # If true, it creates the default routing (TrafficPermission and TrafficRoute) resources for a new Mesh
   createMeshRoutingResources: false # ENV: KUMA_DEFAULTS_CREATE_MESH_ROUTING_RESOURCES
+  # If true, it skips creating default hostname generators
+  skipHostnameGenerators: false # ENV: KUMA_DEFAULTS_SKIP_HOSTNAME_GENERATORS
 # Metrics configuration
 metrics:
   dataplane:
@@ -513,8 +513,6 @@ multizone:
       msgSendTimeout: 60s # ENV: KUMA_MULTIZONE_GLOBAL_KDS_MSG_SEND_TIMEOUT
       # Backoff that is executed when the global control plane is sending the response that was previously rejected by zone control plane
       nackBackoff: 5s # ENV: KUMA_MULTIZONE_GLOBAL_KDS_NACK_BACKOFF
-      # DisableSOTW if true doesn't expose SOTW version of KDS. Default: false
-      disableSOTW: false # ENV: KUMA_MULTIZONE_GLOBAL_KDS_DISABLE_SOTW
       # Response backoff is a time Global CP waits before sending ACK/NACK.
       # This is a way to slow down Zone CP from sending resources too often.
       responseBackoff: 0s # ENV: KUMA_MULTIZONE_GLOBAL_KDS_RESPONSE_BACKOFF
@@ -543,6 +541,9 @@ multizone:
       responseBackoff: 0s # ENV: KUMA_MULTIZONE_ZONE_KDS_RESPONSE_BACKOFF
     # disableOriginLabelValidation disables validation of the origin label when applying resources on Zone CP
     disableOriginLabelValidation: false # ENV: KUMA_MULTIZONE_ZONE_DISABLE_ORIGIN_LABEL_VALIDATION
+    # IngressUpdateInterval is the interval between the CP updating the list of
+    # available services on ZoneIngress.
+    ingressUpdateInterval: 1s # ENV: KUMA_MULTIZONE_ZONE_INGRESS_UPDATE_INTERVAL
 # Diagnostics configuration
 diagnostics:
   # Port of Diagnostic Server for checking health and readiness of the Control Plane
@@ -731,8 +732,6 @@ access:
       groups: ["mesh-system:unauthenticated", "mesh-system:authenticated"] # ENV: KUMA_ACCESS_STATIC_CONTROL_PLANE_METADATA_GROUPS
 # Configuration of experimental features of Kuma
 experimental:
-  # If true, experimental Gateway API is enabled
-  gatewayAPI: false # ENV: KUMA_EXPERIMENTAL_GATEWAY_API
   # If true, instead of embedding kubernetes outbounds into Dataplane object, they are persisted next to VIPs in ConfigMap
   # This can improve performance, but it should be enabled only after all instances are migrated to version that supports this config
   kubeOutboundsAsVIPs: true # ENV: KUMA_EXPERIMENTAL_KUBE_OUTBOUNDS_AS_VIPS
@@ -742,8 +741,6 @@ experimental:
   # you need to first disable this flag and redeploy cp, after config is rewritten to default
   # format you can downgrade your cp
   useTagFirstVirtualOutboundModel: false # ENV: KUMA_EXPERIMENTAL_USE_TAG_FIRST_VIRTUAL_OUTBOUND_MODEL
-  # If true, KDS will sync using incremental xDS updates
-  kdsDeltaEnabled: true # ENV: KUMA_EXPERIMENTAL_KDS_DELTA_ENABLED
   # List of prefixes that will be used to filter out tags by keys from ingress' available services section.
   # This can trim the size of the ZoneIngress object significantly.
   # The drawback is that you cannot use filtered out tags for traffic routing.
@@ -793,13 +790,42 @@ policies:
     - meshhttproutes
     - meshloadbalancingstrategies
     - meshmetrics
+    - meshpassthroughs
     - meshproxypatches
     - meshratelimits
     - meshretries
     - meshtcproutes
     - meshtimeouts
+    - meshtlses
     - meshtraces
     - meshtrafficpermissions
 coreResources:
+  status:
+    # How often we compute status of MeshMultiZoneService
+    meshMultiZoneServiceInterval: 5s # ENV: KUMA_CORE_RESOURCES_STATUS_MESH_MULTI_ZONE_SERVICE_INTERVAL
+    # How often we compute status of MeshService
+    meshServiceInterval: 5s # ENV: KUMA_CORE_RESOURCES_STATUS_MESH_SERVICE_INTERVAL
   enabled: # ENV: KUMA_CORE_RESOURCES_ENABLED
+    - hostnamegenerators
+    - meshexternalservices
+    - meshmultizoneservices
     - meshservices
+# IP address management configuration
+ipam:
+  # MeshService address management
+  meshService:
+    # CIDR for MeshService IPs
+    cidr: 241.0.0.0/8 # ENV: KUMA_IPAM_MESH_SERVICE_CIDR
+  meshExternalService:
+    # CIDR for MeshExternalService IPs
+    cidr: 242.0.0.0/8 # ENV: KUMA_IPAM_MESH_EXTERNAL_SERVICE_CIDR
+  meshMultiZoneService:
+    # CIDR for MeshMultiZoneService IPs
+    cidr: 243.0.0.0/8 # ENV: KUMA_IPAM_MESH_MULTI_ZONE_SERVICE_CIDR
+  # Interval on which Kuma will allocate new IPs for MeshServices and MeshExternalServices
+  allocationInterval: 5s # ENV: KUMA_IPAM_ALLOCATION_INTERVAL
+meshService:
+  # How often we check whether MeshServices need to be generated from Dataplanes
+  generationInterval: 2s # ENV: KUMA_MESH_SERVICE_GENERATION_INTERVAL
+  # How long we wait before deleting a MeshService if all Dataplanes are gone
+  deletionGracePeriod: 1h # ENV: KUMA_MESH_SERVICE_DELETION_GRACE_PERIOD

@@ -68,6 +68,11 @@ func CrossMeshGatewayOnKubernetes() {
 		Expect(setup.Setup(kubernetes.Cluster)).To(Succeed())
 	})
 
+	AfterEachFailure(func() {
+		DebugKube(kubernetes.Cluster, gatewayMesh, gatewayTestNamespace, gatewayTestNamespace2, gatewayClientNamespaceSameMesh)
+		DebugKube(kubernetes.Cluster, gatewayOtherMesh, gatewayClientNamespaceOtherMesh)
+	})
+
 	E2EAfterAll(func() {
 		Expect(kubernetes.Cluster.TriggerDeleteNamespace(gatewayClientNamespaceOtherMesh)).To(Succeed())
 		Expect(kubernetes.Cluster.TriggerDeleteNamespace(gatewayClientNamespaceSameMesh)).To(Succeed())
@@ -80,11 +85,11 @@ func CrossMeshGatewayOnKubernetes() {
 
 	Context("when mTLS is enabled", func() {
 		crossMeshGatewayYaml := mkGateway(
-			crossMeshGatewayName, crossMeshGatewayName, gatewayMesh, true, crossMeshHostname, echoServerService(gatewayMesh, gatewayTestNamespace), crossMeshGatewayPort,
+			crossMeshGatewayName, fmt.Sprintf("%s_%s_svc", crossMeshGatewayName, gatewayTestNamespace), gatewayMesh, true, crossMeshHostname, echoServerService(gatewayMesh, gatewayTestNamespace), crossMeshGatewayPort,
 		)
 		crossMeshGatewayInstanceYaml := MkGatewayInstance(crossMeshGatewayName, gatewayTestNamespace, gatewayMesh)
 		edgeGatewayYaml := mkGateway(
-			edgeGatewayName, edgeGatewayName, gatewayOtherMesh, false, "", echoServerService(gatewayOtherMesh, gatewayTestNamespace), edgeGatewayPort,
+			edgeGatewayName, fmt.Sprintf("%s_%s_svc", edgeGatewayName, gatewayTestNamespace), gatewayOtherMesh, false, "", echoServerService(gatewayOtherMesh, gatewayTestNamespace), edgeGatewayPort,
 		)
 		edgeGatewayInstanceYaml := MkGatewayInstance(
 			edgeGatewayName, gatewayTestNamespace, gatewayOtherMesh,

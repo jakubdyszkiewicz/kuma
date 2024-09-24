@@ -13,6 +13,7 @@
   }
  ],
  "resource": {
+  "labels": {},
   "mesh": "default",
   "name": "dp-1",
   "type": "Dataplane"
@@ -20,6 +21,7 @@
  "rules": [
   {
    "fromRules": [],
+   "toResourceRules": [],
    "toRules": [
     {
      "conf": {
@@ -56,6 +58,7 @@
      ],
      "origin": [
       {
+       "labels": {},
        "mesh": "default",
        "name": "the-http-route",
        "type": "MeshHTTPRoute"
@@ -104,6 +107,7 @@
      ],
      "origin": [
       {
+       "labels": {},
        "mesh": "default",
        "name": "the-other-http-route",
        "type": "MeshHTTPRoute"
@@ -116,6 +120,7 @@
   },
   {
    "fromRules": [],
+   "toResourceRules": [],
    "toRules": [
     {
      "conf": {
@@ -137,13 +142,15 @@
      ],
      "origin": [
       {
+       "labels": {},
        "mesh": "default",
-       "name": "on-route",
+       "name": "on-service",
        "type": "MeshTimeout"
       },
       {
+       "labels": {},
        "mesh": "default",
-       "name": "on-service",
+       "name": "on-route",
        "type": "MeshTimeout"
       }
      ]
@@ -168,6 +175,7 @@
      ],
      "origin": [
       {
+       "labels": {},
        "mesh": "default",
        "name": "on-service",
        "type": "MeshTimeout"

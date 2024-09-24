@@ -4,7 +4,6 @@ import (
 	"github.com/spf13/cobra"
 
 	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
-	"github.com/kumahq/kuma/pkg/plugins/authn/api-server/tokens/cli/generate"
 )
 
 func NewGenerateCmd(pctx *kumactl_cmd.RootContext) *cobra.Command {
@@ -17,9 +16,7 @@ func NewGenerateCmd(pctx *kumactl_cmd.RootContext) *cobra.Command {
 		if err := kumactl_cmd.RunParentPreRunE(generateCmd, args); err != nil {
 			return err
 		}
-		if err := pctx.CheckServerVersionCompatibility(); err != nil {
-			cmd.PrintErrln(err)
-		}
+		_ = kumactl_cmd.CheckCompatibility(pctx.FetchServerVersion, cmd.ErrOrStderr())
 		return nil
 	}
 	// sub-commands
@@ -28,6 +25,6 @@ func NewGenerateCmd(pctx *kumactl_cmd.RootContext) *cobra.Command {
 	generateCmd.AddCommand(NewGenerateCertificateCmd(pctx))
 	generateCmd.AddCommand(NewGenerateSigningKeyCmd(pctx))
 	generateCmd.AddCommand(NewGeneratePublicKeyCmd(pctx))
-	generateCmd.AddCommand(generate.NewGenerateUserTokenCmd(pctx))
+	generateCmd.AddCommand(NewGenerateUserTokenCmd(pctx))
 	return generateCmd
 }

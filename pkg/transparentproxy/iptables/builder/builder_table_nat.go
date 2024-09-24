@@ -2,92 +2,114 @@ package builder
 
 import (
 	"fmt"
-	"net"
-	"strings"
 
 	"github.com/kumahq/kuma/pkg/transparentproxy/config"
-	. "github.com/kumahq/kuma/pkg/transparentproxy/iptables/chain"
-	. "github.com/kumahq/kuma/pkg/transparentproxy/iptables/consts"
+	"github.com/kumahq/kuma/pkg/transparentproxy/consts"
+	. "github.com/kumahq/kuma/pkg/transparentproxy/iptables/chains"
 	. "github.com/kumahq/kuma/pkg/transparentproxy/iptables/parameters"
-	"github.com/kumahq/kuma/pkg/transparentproxy/iptables/table"
+	"github.com/kumahq/kuma/pkg/transparentproxy/iptables/rules"
+	"github.com/kumahq/kuma/pkg/transparentproxy/iptables/tables"
+	"github.com/kumahq/kuma/pkg/util/maps"
 )
 
-func buildMeshInbound(cfg config.TrafficFlow, prefix string, meshInboundRedirect string) *Chain {
-	meshInbound := NewChain(cfg.Chain.GetFullName(prefix))
+func buildMeshInbound(cfg config.InitializedTrafficFlow) *Chain {
+	meshInbound := MustNewChain(consts.TableNat, cfg.ChainName)
+
 	if !cfg.Enabled {
-		meshInbound.Append(
-			Protocol(Tcp()),
-			Jump(Return()),
+		return meshInbound.AddRules(
+			rules.
+				NewAppendRule(
+					Protocol(Tcp()),
+					Jump(Return()),
+				).
+				WithComment("inbound traffic redirection is disabled"),
 		)
-		return meshInbound
 	}
 
-	// Include inbound ports
+	// TODO(bartsmykla): Consider combining this loop with the one processing
+	//  `cfg.ExcludePorts` for logical consistency. However, this requires
+	//  careful handling as parsing `cfg.ExcludePorts` as `Exclusion`s would
+	//  alter the rule placement for **outbound**:
+	//  - Currently, exclusion rules for `--exclude-outbound-ports` are placed
+	//    in the KUMA_MESH_OUTBOUND chain.
+	//  - Exclusions from `--exclude-outbound-ports-for-uids` are placed in the
+	//    OUTPUT chain.
+	//  Combining these may require revisiting how we structure rule generation
+	//  for outbound traffic to maintain correct behavior.
+	for _, exclusion := range cfg.Exclusions {
+		meshInbound.AddRules(
+			rules.
+				NewAppendRule(
+					Source(Address(exclusion.Address)),
+					Jump(Return()),
+				).
+				WithComment("skip further processing for configured IP address"),
+		)
+	}
+
 	for _, port := range cfg.IncludePorts {
-		meshInbound.Append(
-			Protocol(Tcp(DestinationPort(port))),
-			Jump(ToUserDefinedChain(meshInboundRedirect)),
+		meshInbound.AddRules(
+			rules.
+				NewAppendRule(
+					Protocol(Tcp(DestinationPort(port))),
+					Jump(ToUserDefinedChain(cfg.RedirectChainName)),
+				).
+				WithCommentf("redirect inbound traffic from port %d to the custom chain for processing", port),
 		)
 	}
 
 	if len(cfg.IncludePorts) == 0 {
-		// Excluded outbound ports
 		for _, port := range cfg.ExcludePorts {
-			meshInbound.Append(
-				Protocol(Tcp(DestinationPort(port))),
-				Jump(Return()),
+			meshInbound.AddRules(
+				rules.
+					NewAppendRule(
+						Protocol(Tcp(DestinationPort(port))),
+						Jump(Return()),
+					).
+					WithCommentf("exclude inbound traffic from port %d from redirection", port),
 			)
 		}
-		meshInbound.Append(
-			Protocol(Tcp()),
-			Jump(ToUserDefinedChain(meshInboundRedirect)),
+
+		meshInbound.AddRules(
+			rules.
+				NewAppendRule(
+					Protocol(Tcp()),
+					Jump(ToUserDefinedChain(cfg.RedirectChainName)),
+				).
+				WithComment("redirect all inbound traffic to the custom chain for processing"),
 		)
 	}
 
 	return meshInbound
 }
 
-func buildMeshOutbound(
-	cfg config.Config,
-	dnsServers []string,
-	loopback string,
-	ipv6 bool,
-) *Chain {
-	prefix := cfg.Redirect.NamePrefix
-	inboundRedirectChainName := cfg.Redirect.Inbound.RedirectChain.GetFullName(prefix)
-	outboundChainName := cfg.Redirect.Outbound.Chain.GetFullName(prefix)
-	outboundRedirectChainName := cfg.Redirect.Outbound.RedirectChain.GetFullName(prefix)
-	excludePorts := cfg.Redirect.Outbound.ExcludePorts
-	includePorts := cfg.Redirect.Outbound.IncludePorts
-	hasIncludedPorts := len(includePorts) > 0
-	dnsRedirectPort := cfg.Redirect.DNS.Port
-	uid := cfg.Owner.UID
+func buildMeshOutbound(cfg config.InitializedConfigIPvX) *Chain {
+	meshOutbound := MustNewChain(consts.TableNat, cfg.Redirect.Outbound.ChainName)
 
-	localhost := LocalhostCIDRIPv4
-	inboundPassthroughSourceAddress := InboundPassthroughSourceAddressCIDRIPv4
-	if ipv6 {
-		inboundPassthroughSourceAddress = InboundPassthroughSourceAddressCIDRIPv6
-		localhost = LocalhostCIDRIPv6
-	}
-
-	meshOutbound := NewChain(outboundChainName)
 	if !cfg.Redirect.Outbound.Enabled {
-		meshOutbound.Append(
-			Protocol(Tcp()),
-			Jump(Return()),
+		return meshOutbound.AddRules(
+			rules.
+				NewAppendRule(
+					Protocol(Tcp()),
+					Jump(Return()),
+				).
+				WithComment("outbound traffic redirection is disabled"),
 		)
-		return meshOutbound
 	}
 
-	// Excluded outbound ports
-	if !hasIncludedPorts {
-		for _, port := range excludePorts {
-			meshOutbound.Append(
-				Protocol(Tcp(DestinationPort(port))),
-				Jump(Return()),
+	if len(cfg.Redirect.Outbound.IncludePorts) == 0 {
+		for _, port := range cfg.Redirect.Outbound.ExcludePorts {
+			meshOutbound.AddRules(
+				rules.
+					NewAppendRule(
+						Protocol(Tcp(DestinationPort(port))),
+						Jump(Return()),
+					).
+					WithCommentf("exclude outbound traffic from port %d from redirection", port),
 			)
 		}
 	}
+
 	meshOutbound.
 		// ipv4:
 		//   when tcp_packet to 192.168.0.10:7777 arrives ⤸
@@ -114,252 +136,273 @@ func buildMeshOutbound(
 		//     listener#[fd00::0:10]:7777 ⤸
 		//     cluster#localhost:7777 ⤸
 		//   localhost:7777
-		Append(
-			Source(Address(inboundPassthroughSourceAddress)),
-			OutInterface(loopback),
-			Jump(Return()),
-		).
-		Append(
-			Protocol(Tcp(NotDestinationPortIf(cfg.ShouldRedirectDNS, DNSPort))),
-			OutInterface(loopback),
-			NotDestination(localhost),
-			Match(Owner(Uid(uid))),
-			Jump(ToUserDefinedChain(inboundRedirectChainName)),
-		).
-		Append(
-			Protocol(Tcp(NotDestinationPortIf(cfg.ShouldRedirectDNS, DNSPort))),
-			OutInterface(loopback),
-			Match(Owner(NotUid(uid))),
-			Jump(Return()),
-		).
-		Append(
-			Match(Owner(Uid(uid))),
-			Jump(Return()),
+		AddRules(
+			rules.
+				NewAppendRule(
+					Source(Address(cfg.InboundPassthroughCIDR)),
+					OutInterface(cfg.LoopbackInterfaceName),
+					Jump(Return()),
+				).
+				WithCommentf("prevent traffic loops by ensuring traffic from the sidecar proxy (using %s) to loopback interface is not redirected again", cfg.InboundPassthroughCIDR),
+			rules.
+				NewAppendRule(
+					Protocol(Tcp(NotDestinationPortIfBool(cfg.Redirect.DNS.Enabled, consts.DNSPort))),
+					OutInterface(cfg.LoopbackInterfaceName),
+					NotDestination(cfg.LocalhostCIDR),
+					Match(Owner(Uid(cfg.KumaDPUser))),
+					Jump(ToUserDefinedChain(cfg.Redirect.Inbound.RedirectChainName)),
+				).
+				WithCommentf("redirect outbound TCP traffic (except to DNS port %d) destined for loopback interface, but not targeting address %s, and owned by UID %s (kuma-dp user) to %s chain for proper handling", consts.DNSPort, cfg.LocalhostCIDR, cfg.KumaDPUser, cfg.Redirect.Inbound.RedirectChainName),
+			rules.
+				NewAppendRule(
+					Protocol(Tcp(NotDestinationPortIfBool(cfg.Redirect.DNS.Enabled, consts.DNSPort))),
+					OutInterface(cfg.LoopbackInterfaceName),
+					Match(Owner(NotUid(cfg.KumaDPUser))),
+					Jump(Return()),
+				).
+				WithCommentf("return outbound TCP traffic (except to DNS port %d) destined for loopback interface, owned by any UID other than %s (kuma-dp user)", consts.DNSPort, cfg.KumaDPUser),
+			rules.
+				NewAppendRule(
+					Match(Owner(Uid(cfg.KumaDPUser))),
+					Jump(Return()),
+				).
+				WithCommentf("return outbound traffic owned by UID %s (kuma-dp user)", cfg.KumaDPUser),
 		)
-	if cfg.ShouldRedirectDNS() {
-		if cfg.ShouldCaptureAllDNS() {
-			meshOutbound.Append(
-				Protocol(Tcp(DestinationPort(DNSPort))),
-				Jump(ToPort(dnsRedirectPort)),
+
+	if cfg.Redirect.DNS.Enabled {
+		if cfg.Redirect.DNS.CaptureAll {
+			meshOutbound.AddRules(
+				rules.
+					NewAppendRule(
+						Protocol(Tcp(DestinationPort(consts.DNSPort))),
+						Jump(ToPort(cfg.Redirect.DNS.Port)),
+					).
+					WithCommentf("redirect all DNS requests sent via TCP to kuma-dp DNS proxy (listening on port %d)", cfg.Redirect.DNS.Port),
 			)
 		} else {
-			for _, dnsIp := range dnsServers {
-				meshOutbound.Append(
-					Destination(dnsIp),
-					Protocol(Tcp(DestinationPort(DNSPort))),
-					Jump(ToPort(dnsRedirectPort)),
+			for _, dnsIp := range cfg.Redirect.DNS.Servers {
+				meshOutbound.AddRules(
+					rules.
+						NewAppendRule(
+							Destination(dnsIp),
+							Protocol(Tcp(DestinationPort(consts.DNSPort))),
+							Jump(ToPort(cfg.Redirect.DNS.Port)),
+						).
+						WithCommentf("redirect DNS requests sent via TCP to %s to kuma-dp DNS proxy (listening on port %d)", dnsIp, cfg.Redirect.DNS.Port),
 				)
 			}
 		}
 	}
-	meshOutbound.
-		Append(
-			Destination(localhost),
-			Jump(Return()),
-		)
 
-	if hasIncludedPorts {
-		for _, port := range includePorts {
-			meshOutbound.Append(
-				Protocol(Tcp(DestinationPort(port))),
-				Jump(ToUserDefinedChain(outboundRedirectChainName)),
-			)
-		}
-	} else {
-		meshOutbound.Append(
-			Jump(ToUserDefinedChain(outboundRedirectChainName)),
+	meshOutbound.AddRules(
+		rules.
+			NewAppendRule(
+				Destination(cfg.LocalhostCIDR),
+				Jump(Return()),
+			).
+			WithCommentf("return traffic destined for localhost (%s) to avoid redirection", cfg.LocalhostCIDR),
+	)
+
+	for _, port := range cfg.Redirect.Outbound.IncludePorts {
+		meshOutbound.AddRules(
+			rules.
+				NewAppendRule(
+					Protocol(Tcp(DestinationPort(port))),
+					Jump(ToUserDefinedChain(cfg.Redirect.Outbound.RedirectChainName)),
+				).
+				WithCommentf("redirect outbound TCP traffic to port %d to our custom chain for further processing", port),
+		)
+	}
+
+	if len(cfg.Redirect.Outbound.IncludePorts) == 0 {
+		meshOutbound.AddRules(
+			rules.
+				NewAppendRule(
+					Jump(ToUserDefinedChain(cfg.Redirect.Outbound.RedirectChainName)),
+				).
+				WithComment("redirect all other outbound traffic to our custom chain for further processing"),
 		)
 	}
 
 	return meshOutbound
 }
 
-func buildMeshRedirect(cfg config.TrafficFlow, prefix string, ipv6 bool) *Chain {
-	chainName := cfg.RedirectChain.GetFullName(prefix)
-
-	redirectPort := cfg.Port
-	if ipv6 && cfg.PortIPv6 != 0 {
-		redirectPort = cfg.PortIPv6
-	}
-
-	return NewChain(chainName).
-		Append(
-			Protocol(Tcp()),
-			Jump(ToPort(redirectPort)),
-		)
+// buildMeshRedirect creates a chain in the NAT table to handle traffic redirection
+// to a specified port. The chain will be configured to redirect TCP traffic to the
+// provided port, which can be different for IPv4 and IPv6
+func buildMeshRedirect(cfg config.InitializedTrafficFlow) *Chain {
+	return MustNewChain(consts.TableNat, cfg.RedirectChainName).AddRules(
+		rules.
+			NewAppendRule(
+				Protocol(Tcp()),
+				Jump(ToPort(cfg.Port)),
+			).
+			WithCommentf("redirect TCP traffic to envoy (port %d)", cfg.Port),
+	)
 }
 
-func addOutputRules(
-	cfg config.Config,
-	dnsServers []string,
-	nat *table.NatTable,
-	ipv6 bool,
-) error {
-	outboundChainName := cfg.Redirect.Outbound.Chain.GetFullName(cfg.Redirect.NamePrefix)
-	dnsRedirectPort := cfg.Redirect.DNS.Port
-	uid := cfg.Owner.UID
-	rulePosition := 1
+func addOutputRules(cfg config.InitializedConfigIPvX, nat *tables.NatTable) {
 	if cfg.Log.Enabled {
-		nat.Output().Insert(
-			rulePosition,
-			Jump(Log(OutputLogPrefix, cfg.Log.Level)),
+		nat.Output().AddRules(
+			rules.
+				NewInsertRule(Jump(Log(consts.OutputLogPrefix, cfg.Log.Level))).
+				WithComment("log matching packets using kernel logging"),
 		)
-		rulePosition++
 	}
 
-	// Excluded outbound ports for UIDs
-	for _, uIDsToPorts := range cfg.Redirect.Outbound.ExcludePortsForUIDs {
-		var protocol *Parameter
-
-		switch uIDsToPorts.Protocol {
-		case TCP:
-			protocol = Protocol(Tcp(DestinationPortRangeOrValue(uIDsToPorts)))
-		case UDP:
-			protocol = Protocol(Udp(DestinationPortRangeOrValue(uIDsToPorts)))
-		default:
-			return fmt.Errorf("unknown protocol %s, only 'tcp' or 'udp' allowed", uIDsToPorts.Protocol)
-		}
-
-		nat.Output().Insert(
-			rulePosition,
-			Match(Multiport()),
-			protocol,
-			Match(Owner(UidRangeOrValue(uIDsToPorts))),
-			Jump(Return()),
+	for _, exclusion := range cfg.Redirect.Outbound.Exclusions {
+		nat.Output().AddRules(
+			rules.
+				NewInsertRule(
+					MatchIf(exclusion.Ports != "", Multiport()),
+					Protocol(
+						TcpIf(
+							exclusion.Protocol == consts.ProtocolTCP,
+							DestinationPortRangeOrValue(exclusion),
+						),
+						UdpIf(
+							exclusion.Protocol == consts.ProtocolUDP,
+							DestinationPortRangeOrValue(exclusion),
+						),
+					),
+					MatchIf(
+						exclusion.UIDs != "",
+						Owner(UidRangeOrValue(exclusion)),
+					),
+					Destination(exclusion.Address),
+					Jump(Return()),
+				).
+				WithComment("skip further processing for configured IP addresses, ports and UIDs"),
 		)
-		rulePosition++
 	}
 
-	if cfg.ShouldRedirectDNS() {
-		jumpTarget := Return()
-		if !ipv6 && cfg.ShouldFallbackDNSToUpstreamChain() {
-			jumpTarget = ToUserDefinedChain(cfg.Redirect.DNS.UpstreamTargetChain)
-		}
-
-		nat.Output().Insert(
-			rulePosition,
-			Protocol(Udp(DestinationPort(DNSPort))),
-			Match(Owner(Uid(uid))),
-			Jump(jumpTarget),
+	if cfg.Redirect.DNS.Enabled {
+		nat.Output().AddRules(
+			rules.
+				NewInsertRule(
+					Protocol(Udp(DestinationPort(consts.DNSPort))),
+					Match(Owner(Uid(cfg.KumaDPUser))),
+					JumpConditional(
+						// if DOCKER_OUTPUT should be targeted --jump DOCKER_OUTPUT or else RETURN
+						cfg.Executables.Functionality.Chains.DockerOutput,
+						ToUserDefinedChain(consts.ChainDockerOutput),
+						Return(),
+					),
+				).
+				WithConditionalComment(
+					cfg.Executables.Functionality.Chains.DockerOutput,
+					fmt.Sprintf(
+						"redirect DNS traffic from kuma-dp to the %s chain",
+						consts.ChainDockerOutput,
+					),
+					"return early for DNS traffic from kuma-dp",
+				),
 		)
-		rulePosition++
 
-		if cfg.ShouldCaptureAllDNS() {
-			nat.Output().Insert(
-				rulePosition,
-				Protocol(Udp(DestinationPort(DNSPort))),
-				Jump(ToPort(dnsRedirectPort)),
+		if cfg.Redirect.DNS.CaptureAll {
+			nat.Output().AddRules(
+				rules.
+					NewInsertRule(
+						Protocol(Udp(DestinationPort(consts.DNSPort))),
+						Jump(ToPort(cfg.Redirect.DNS.Port)),
+					).
+					WithCommentf("redirect all DNS requests to the kuma-dp DNS proxy (listening on port %d)", cfg.Redirect.DNS.Port),
 			)
 		} else {
-			for _, dnsIp := range dnsServers {
-				nat.Output().Insert(
-					rulePosition,
-					Destination(dnsIp),
-					Protocol(Udp(DestinationPort(DNSPort))),
-					Jump(ToPort(dnsRedirectPort)),
+			for _, dnsIp := range cfg.Redirect.DNS.Servers {
+				nat.Output().AddRules(
+					rules.
+						NewInsertRule(
+							Destination(dnsIp),
+							Protocol(Udp(DestinationPort(consts.DNSPort))),
+							Jump(ToPort(cfg.Redirect.DNS.Port)),
+						).
+						WithCommentf("redirect DNS requests to %s to the kuma-dp DNS proxy (listening on port %d)", dnsIp, cfg.Redirect.DNS.Port),
 				)
-				rulePosition++
 			}
 		}
 	}
-	nat.Output().
-		Append(
-			Protocol(Tcp()),
-			Jump(ToUserDefinedChain(outboundChainName)),
-		)
-	return nil
-}
 
-func addPreroutingRules(cfg config.Config, nat *table.NatTable, ipv6 bool) error {
-	inboundChainName := cfg.Redirect.Inbound.Chain.GetFullName(cfg.Redirect.NamePrefix)
-	rulePosition := 1
-	if cfg.Log.Enabled {
-		nat.Prerouting().Append(
-			Jump(Log(PreroutingLogPrefix, cfg.Log.Level)),
-		)
-	}
-
-	if len(cfg.Redirect.VNet.Networks) > 0 {
-		interfaceAndCidr := map[string]string{}
-		for i := 0; i < len(cfg.Redirect.VNet.Networks); i++ {
-			// we accept only first : so in case of IPv6 there should be no problem with parsing
-			pair := strings.SplitN(cfg.Redirect.VNet.Networks[i], ":", 2)
-			if len(pair) < 2 {
-				return fmt.Errorf("incorrect definition of virtual network: %s", cfg.Redirect.VNet.Networks[i])
-			}
-			ipAddress, _, err := net.ParseCIDR(pair[1])
-			if err != nil {
-				return fmt.Errorf("incorrect CIDR definition: %s", err)
-			}
-			// if is ipv6 and address is ipv6 or is ipv4 and address is ipv4
-			if (ipv6 && ipAddress.To4() == nil) || (!ipv6 && ipAddress.To4() != nil) {
-				interfaceAndCidr[pair[0]] = pair[1]
-			}
-		}
-		for iface, cidr := range interfaceAndCidr {
-			nat.Prerouting().Insert(
-				rulePosition,
-				InInterface(iface),
-				Match(MatchUdp()),
-				Protocol(Udp(DestinationPort(DNSPort))),
-				Jump(ToPort(cfg.Redirect.DNS.Port)),
-			)
-			rulePosition += 1
-			nat.Prerouting().Insert(
-				rulePosition,
-				NotDestination(cidr),
-				InInterface(iface),
+	nat.Output().AddRules(
+		rules.
+			NewConditionalInsertOrAppendRule(
+				cfg.Redirect.Outbound.InsertRedirectInsteadOfAppend,
 				Protocol(Tcp()),
-				Jump(ToPort(cfg.Redirect.Outbound.Port)),
-			)
-			rulePosition += 1
-		}
-		nat.Prerouting().Insert(
-			rulePosition,
-			Protocol(Tcp()),
-			Jump(ToUserDefinedChain(inboundChainName)),
-		)
-	} else {
-		nat.Prerouting().Append(
-			Protocol(Tcp()),
-			Jump(ToUserDefinedChain(inboundChainName)),
-		)
-	}
-	return nil
+				Jump(ToUserDefinedChain(cfg.Redirect.Outbound.ChainName)),
+			).
+			WithComment("redirect outbound TCP traffic to our custom chain for processing"),
+	)
 }
 
-func buildNatTable(
-	cfg config.Config,
-	dnsServers []string,
-	loopback string,
-	ipv6 bool,
-) (*table.NatTable, error) {
-	prefix := cfg.Redirect.NamePrefix
-	inboundRedirectChainName := cfg.Redirect.Inbound.RedirectChain.GetFullName(prefix)
-	nat := table.Nat()
-
-	if err := addOutputRules(cfg, dnsServers, nat, ipv6); err != nil {
-		return nil, fmt.Errorf("could not add output rules %s", err)
-	}
-	if err := addPreroutingRules(cfg, nat, ipv6); err != nil {
-		return nil, fmt.Errorf("could not add prerouting rules %s", err)
+// addPreroutingRules adds rules to the PREROUTING chain of the NAT table to
+// handle inbound traffic according to the provided configuration
+func addPreroutingRules(cfg config.InitializedConfigIPvX, nat *tables.NatTable) {
+	// Add a logging rule if logging is enabled.
+	if cfg.Log.Enabled {
+		nat.Prerouting().AddRules(
+			rules.
+				NewAppendRule(Jump(Log(consts.PreroutingLogPrefix, cfg.Log.Level))).
+				WithComment("log matching packets using kernel logging"),
+		)
 	}
 
-	// MESH_INBOUND
-	meshInbound := buildMeshInbound(cfg.Redirect.Inbound, prefix, inboundRedirectChainName)
+	if len(cfg.Redirect.VNet.InterfaceCIDRs) == 0 && !cfg.Redirect.Inbound.InsertRedirectInsteadOfAppend {
+		nat.Prerouting().AddRules(
+			rules.
+				NewAppendRule(
+					Protocol(Tcp()),
+					Jump(ToUserDefinedChain(cfg.Redirect.Inbound.ChainName)),
+				).
+				WithComment("redirect inbound TCP traffic to our custom chain for processing"),
+		)
+		return
+	}
 
-	// MESH_INBOUND_REDIRECT
-	meshInboundRedirect := buildMeshRedirect(cfg.Redirect.Inbound, prefix, ipv6)
+	for _, iface := range maps.SortedKeys(cfg.Redirect.VNet.InterfaceCIDRs) {
+		nat.Prerouting().AddRules(
+			rules.
+				NewInsertRule(
+					InInterface(iface),
+					Match(MatchUdp()),
+					Protocol(Udp(DestinationPort(consts.DNSPort))),
+					Jump(ToPort(cfg.Redirect.DNS.Port)),
+				).
+				WithCommentf("redirect DNS requests on interface %s to the kuma-dp DNS proxy (listening on port %d)", iface, cfg.Redirect.DNS.Port),
+			rules.
+				NewInsertRule(
+					NotDestination(cfg.Redirect.VNet.InterfaceCIDRs[iface]),
+					InInterface(iface),
+					Protocol(Tcp()),
+					Jump(ToPort(cfg.Redirect.Outbound.Port)),
+				).
+				WithCommentf("redirect TCP traffic on interface %s, excluding destination %s, to the envoy's outbound passthrough port %d", iface, cfg.Redirect.VNet.InterfaceCIDRs[iface], cfg.Redirect.Outbound.Port),
+		)
+	}
 
-	// MESH_OUTBOUND
-	meshOutbound := buildMeshOutbound(cfg, dnsServers, loopback, ipv6)
+	nat.Prerouting().AddRules(
+		rules.
+			NewInsertRule(
+				Protocol(Tcp()),
+				Jump(ToUserDefinedChain(cfg.Redirect.Inbound.ChainName)),
+			).
+			WithComment("redirect remaining TCP traffic to our custom chain for processing"),
+	)
+}
 
-	// MESH_OUTBOUND_REDIRECT
-	meshOutboundRedirect := buildMeshRedirect(cfg.Redirect.Outbound, prefix, ipv6)
+// buildNatTable constructs the NAT table for iptables with the necessary rules
+// for handling inbound and outbound traffic redirection, DNS redirection, and
+// specific port exclusions or inclusions. It sets up custom chains for mesh
+// traffic management based on the provided configuration
+func buildNatTable(cfg config.InitializedConfigIPvX) *tables.NatTable {
+	nat := tables.Nat()
+
+	addOutputRules(cfg, nat)
+
+	addPreroutingRules(cfg, nat)
 
 	return nat.
-		WithChain(meshInbound).
-		WithChain(meshOutbound).
-		WithChain(meshInboundRedirect).
-		WithChain(meshOutboundRedirect), nil
+		WithCustomChain(buildMeshInbound(cfg.Redirect.Inbound)).
+		WithCustomChain(buildMeshOutbound(cfg)).
+		WithCustomChain(buildMeshRedirect(cfg.Redirect.Inbound)).
+		WithCustomChain(buildMeshRedirect(cfg.Redirect.Outbound))
 }

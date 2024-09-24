@@ -24,7 +24,7 @@ func MeshTrace(config *Config) func() {
 apiVersion: kuma.io/v1alpha1
 kind: MeshTrace
 metadata:
-  name: trace-all
+  name: trace-all-delegated
   namespace: %s
   labels:
     kuma.io/mesh: %s
@@ -42,8 +42,8 @@ spec:
 `, config.CpNamespace, config.Mesh, zipkinUrl))
 		}
 
-		BeforeAll(func() {
-			observabilityClient = observability.From(config.ObservabilityDeploymentName, kubernetes.Cluster)
+		framework.AfterEachFailure(func() {
+			framework.DebugKube(kubernetes.Cluster, config.Mesh, config.Namespace, config.ObservabilityDeploymentName)
 		})
 
 		framework.E2EAfterEach(func() {
@@ -55,6 +55,8 @@ spec:
 		})
 
 		It("should emit traces to jaeger", func() {
+			observabilityClient = observability.From(config.ObservabilityDeploymentName, kubernetes.Cluster)
+
 			// given MeshTrace and with tracing backend
 			Expect(kubernetes.Cluster.Install(meshTrace(observabilityClient.ZipkinCollectorURL()))).
 				To(Succeed())
@@ -70,7 +72,7 @@ spec:
 				srvs, err := observabilityClient.TracedServices()
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(srvs).To(Equal([]string{
-					fmt.Sprintf("delegated-gateway-admin_%s_svc_8444", config.Mesh),
+					fmt.Sprintf("%[1]s-gateway-admin_%[1]s_svc_8444", config.Mesh),
 					"jaeger-query",
 					fmt.Sprintf("test-server_%s_svc_80", config.Mesh),
 				}))

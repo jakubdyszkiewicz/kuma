@@ -23,7 +23,7 @@ func MeshMetric(config *Config) func() {
 apiVersion: kuma.io/v1alpha1
 kind: MeshMetric
 metadata:
-  name: otel-metrics
+  name: otel-metrics-delegated
   namespace: %s
   labels:
     kuma.io/mesh: %s
@@ -42,6 +42,10 @@ spec:
           refreshInterval: 30s
 `, config.CpNamespace, config.Mesh, otelEndpoint))
 		}
+
+		framework.AfterEachFailure(func() {
+			framework.DebugKube(kubernetes.Cluster, config.Mesh, config.Namespace, config.ObservabilityDeploymentName)
+		})
 
 		framework.E2EAfterEach(func() {
 			Expect(framework.DeleteMeshResources(
@@ -71,7 +75,7 @@ spec:
 						return strings.Split(stdout, "\n")
 					},
 					ContainElement(MatchRegexp(
-						`envoy_cluster_external_upstream_rq_time_bucket\{.*service="delegated-gateway-admin_%s_svc_8444"`,
+						`envoy_cluster_external_upstream_rq_time_bucket\{.*service="%[1]s-gateway-admin_%[1]s_svc_8444"`,
 						config.Mesh,
 					)),
 				))

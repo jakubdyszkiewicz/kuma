@@ -6,6 +6,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     name: db
     transportSocket:
@@ -45,6 +46,7 @@ resources:
     edsClusterConfig:
       edsConfig:
         ads: {}
+        initialFetchTimeout: 0s
         resourceApiVersion: V3
     healthChecks:
     - healthyThreshold: 2
@@ -111,7 +113,7 @@ resources:
         - endpoint:
             address:
               pipe:
-                path: /foo/bar
+                path: /tmp/kuma-mh-backend-01-demo.sock
     name: kuma:metrics:hijacker
     type: STATIC
 - name: localhost:8080
@@ -286,6 +288,11 @@ resources:
               - '*'
               name: kuma:envoy:admin
               routes:
+              - match:
+                  prefix: /ready
+                route:
+                  cluster: kuma:envoy:admin
+                  prefixRewrite: /ready
               - match:
                   prefix: /
                 route:

@@ -8,18 +8,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
-	"github.com/kumahq/kuma/pkg/config/core"
 	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/core/resources/registry"
 	k8s_common "github.com/kumahq/kuma/pkg/plugins/common/k8s"
-	"github.com/kumahq/kuma/pkg/plugins/runtime/k8s/metadata"
+	"github.com/kumahq/kuma/pkg/plugins/resources/k8s"
 )
-
-type Defaulter interface {
-	core_model.Resource
-	Default() error
-}
 
 func DefaultingWebhookFor(scheme *runtime.Scheme, converter k8s_common.Converter, checker ResourceAdmissionChecker) *admission.Webhook {
 	return &admission.Webhook{
@@ -35,10 +28,10 @@ type defaultingHandler struct {
 	ResourceAdmissionChecker
 
 	converter k8s_common.Converter
-	decoder   *admission.Decoder
+	decoder   admission.Decoder
 }
 
-func (h *defaultingHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
+func (h *defaultingHandler) Handle(_ context.Context, req admission.Request) admission.Response {
 	resource, err := registry.Global().NewObject(core_model.ResourceType(req.Kind.Kind))
 	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
@@ -58,7 +51,7 @@ func (h *defaultingHandler) Handle(ctx context.Context, req admission.Request) a
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
-	if defaulter, ok := resource.(Defaulter); ok {
+	if defaulter, ok := resource.(core_model.Defaulter); ok {
 		if err := defaulter.Default(); err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
@@ -69,31 +62,28 @@ func (h *defaultingHandler) Handle(ctx context.Context, req admission.Request) a
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
-	if resp := h.IsOperationAllowed(req.UserInfo, resource); !resp.Allowed {
+	if resp := h.IsOperationAllowed(req.UserInfo, resource, req.Namespace); !resp.Allowed {
 		return resp
 	}
 
-	if resource.Descriptor().Scope == core_model.ScopeMesh {
-		labels := obj.GetLabels()
-		if _, ok := labels[metadata.KumaMeshLabel]; !ok {
-			if len(labels) == 0 {
-				labels = map[string]string{}
-			}
-			labels[metadata.KumaMeshLabel] = core_model.DefaultMesh
-			obj.SetLabels(labels)
-		}
+	computed, err := core_model.ComputeLabels(
+		resource.Descriptor(),
+		resource.GetSpec(),
+		resource.GetMeta().GetLabels(),
+		resource.GetMeta().GetNameExtensions(),
+		resource.GetMeta().GetMesh(),
+		h.Mode,
+		true,
+		h.SystemNamespace,
+		h.ZoneName,
+	)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
 	}
+	labels, annotations := k8s.SplitLabelsAndAnnotations(computed, obj.GetAnnotations())
 
-	if h.Mode == core.Zone {
-		labels := obj.GetLabels()
-		if _, ok := core_model.ResourceOrigin(resource.GetMeta()); !ok {
-			if len(labels) == 0 {
-				labels = map[string]string{}
-			}
-			labels[mesh_proto.ResourceOriginLabel] = string(mesh_proto.ZoneResourceOrigin)
-			obj.SetLabels(labels)
-		}
-	}
+	obj.SetLabels(labels)
+	obj.SetAnnotations(annotations)
 
 	marshaled, err := json.Marshal(obj)
 	if err != nil {

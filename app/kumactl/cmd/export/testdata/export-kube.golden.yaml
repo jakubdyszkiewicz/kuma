@@ -1,3 +1,13 @@
+# Product: Kuma, Version: 0.0.0-testversion, Hostname: localhost, ClusterId: test-cluster, InstanceId: test-instance
+apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  annotations:
+    k8s.kuma.io/mesh-defaults-generated: "true"
+  creationTimestamp: "2024-01-08T17:25:45Z"
+  name: default
+spec: {}
+---
 apiVersion: kuma.io/v1alpha1
 kind: Mesh
 metadata:

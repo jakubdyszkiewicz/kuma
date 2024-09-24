@@ -31,14 +31,14 @@ var _ = Describe("RBAC", func() {
 			// given
 			rs := core_xds.NewResourceSet()
 			ctx := xds_builders.Context().
-				WithMesh(samples.MeshMTLSBuilder().WithName("mesh-1")).
+				WithMeshBuilder(samples.MeshMTLSBuilder().WithName("mesh-1")).
 				Build()
 
 			// listener that matches
 			listener, err := listeners.NewInboundListenerBuilder(envoy.APIV3, "192.168.0.1", 8080, core_xds.SocketAddressProtocolTCP).
 				WithOverwriteName("test_listener").
 				Configure(listeners.FilterChain(listeners.NewFilterChainBuilder(envoy.APIV3, envoy.AnonymousResource).
-					Configure(listeners.ServerSideMTLS(ctx.Mesh.Resource, envoy.NewSecretsTracker(ctx.Mesh.Resource.Meta.GetName(), nil))).
+					Configure(listeners.ServerSideMTLS(ctx.Mesh.Resource, envoy.NewSecretsTracker(ctx.Mesh.Resource.Meta.GetName(), nil), nil, nil)).
 					Configure(listeners.HttpConnectionManager("test_listener", false)))).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -52,7 +52,7 @@ var _ = Describe("RBAC", func() {
 			listener2, err := listeners.NewInboundListenerBuilder(envoy.APIV3, "192.168.0.1", 8081, core_xds.SocketAddressProtocolTCP).
 				WithOverwriteName("test_listener2").
 				Configure(listeners.FilterChain(listeners.NewFilterChainBuilder(envoy.APIV3, envoy.AnonymousResource).
-					Configure(listeners.ServerSideMTLS(ctx.Mesh.Resource, envoy.NewSecretsTracker(ctx.Mesh.Resource.Meta.GetName(), nil))).
+					Configure(listeners.ServerSideMTLS(ctx.Mesh.Resource, envoy.NewSecretsTracker(ctx.Mesh.Resource.Meta.GetName(), nil), nil, nil)).
 					Configure(listeners.HttpConnectionManager("test_listener2", false)))).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -66,7 +66,7 @@ var _ = Describe("RBAC", func() {
 			listener3, err := listeners.NewInboundListenerBuilder(envoy.APIV3, "192.168.0.1", 8082, core_xds.SocketAddressProtocolTCP).
 				WithOverwriteName("test_listener3").
 				Configure(listeners.FilterChain(listeners.NewFilterChainBuilder(envoy.APIV3, envoy.AnonymousResource).
-					Configure(listeners.ServerSideMTLS(ctx.Mesh.Resource, envoy.NewSecretsTracker(ctx.Mesh.Resource.Meta.GetName(), nil))).
+					Configure(listeners.ServerSideMTLS(ctx.Mesh.Resource, envoy.NewSecretsTracker(ctx.Mesh.Resource.Meta.GetName(), nil), nil, nil)).
 					Configure(listeners.HttpConnectionManager("test_listener3", false)))).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -170,7 +170,7 @@ var _ = Describe("RBAC", func() {
 
 			// mesh with enabled mTLS and egress
 			ctx := xds_builders.Context().
-				WithMesh(builders.Mesh().
+				WithMeshBuilder(builders.Mesh().
 					WithName("mesh-1").
 					WithBuiltinMTLSBackend("builtin-1").
 					WithEnabledMTLSBackend("builtin-1").
@@ -219,6 +219,22 @@ var _ = Describe("RBAC", func() {
 												}: {
 													{
 														Subset: core_rules.MeshService("frontend"),
+														Conf:   policies_api.Conf{Action: policies_api.Allow},
+													},
+												},
+											},
+										},
+									},
+								},
+								"example-mes": {
+									policies_api.MeshTrafficPermissionType: core_xds.TypedMatchingPolicies{
+										FromRules: core_rules.FromRules{
+											Rules: map[core_rules.InboundListener]core_rules.Rules{
+												{
+													Address: "192.168.0.1", Port: 10002,
+												}: {
+													{
+														Subset: core_rules.MeshSubset(),
 														Conf:   policies_api.Conf{Action: policies_api.Allow},
 													},
 												},

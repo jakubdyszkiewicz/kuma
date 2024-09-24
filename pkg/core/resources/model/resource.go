@@ -13,7 +13,8 @@ import (
 	common_api "github.com/kumahq/kuma/api/common/v1alpha1"
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
 	config_core "github.com/kumahq/kuma/pkg/config/core"
-	"github.com/kumahq/kuma/pkg/kds/hash"
+	"github.com/kumahq/kuma/pkg/plugins/runtime/k8s/metadata"
+	"github.com/kumahq/kuma/pkg/util/pointer"
 )
 
 const (
@@ -193,6 +194,10 @@ type ResourceTypeDescriptor struct {
 	Overview Resource
 	// DumpForGlobal whether resources of this type should be dumped when exporting a zone to migrate to global
 	DumpForGlobal bool
+	// AllowedOnSystemNamespaceOnly whether this resource type can be created only in the system namespace
+	AllowedOnSystemNamespaceOnly bool
+	// IsReferenceableInTo whether this resource type can be used in spec.to[].targetRef
+	IsReferenceableInTo bool
 }
 
 func newObject(baseResource Resource) Resource {
@@ -258,6 +263,10 @@ func (d ResourceTypeDescriptor) NewOverviewList() ResourceList {
 	return d.Overview.Descriptor().NewList()
 }
 
+func (d ResourceTypeDescriptor) IsInsight() bool {
+	return strings.HasSuffix(string(d.Name), "Insight")
+}
+
 type TypeFilter interface {
 	Apply(descriptor ResourceTypeDescriptor) bool
 }
@@ -307,6 +316,12 @@ func HasScope(scope ResourceScope) TypeFilter {
 func IsPolicy() TypeFilter {
 	return TypeFilterFn(func(descriptor ResourceTypeDescriptor) bool {
 		return descriptor.IsPolicy
+	})
+}
+
+func IsInsight() TypeFilter {
+	return TypeFilterFn(func(descriptor ResourceTypeDescriptor) bool {
+		return descriptor.IsInsight()
 	})
 }
 
@@ -403,48 +418,162 @@ func IsReferenced(refMeta ResourceMeta, refName string, resourceMeta ResourceMet
 	if refMeta.GetMesh() != resourceMeta.GetMesh() {
 		return false
 	}
-
-	if len(refMeta.GetNameExtensions()) == 0 {
-		return equalNames(refMeta.GetMesh(), refName, resourceMeta.GetName())
-	}
-
-	nsRef := refMeta.GetNameExtensions()[K8sNamespaceComponent]
-	nsRes := refMeta.GetNameExtensions()[K8sNamespaceComponent]
-	if nsRef == "" || nsRef != nsRes {
-		return false
-	}
-
-	return equalNames(refMeta.GetMesh(), refName, resourceMeta.GetNameExtensions()[K8sNameComponent])
+	return refName == GetDisplayName(resourceMeta)
 }
 
-func IsLocallyOriginated(mode config_core.CpMode, r Resource) bool {
+func IsLocallyOriginated(mode config_core.CpMode, labels map[string]string) bool {
 	switch mode {
 	case config_core.Global:
-		origin, ok := ResourceOrigin(r.GetMeta())
+		origin, ok := resourceOrigin(labels)
 		return !ok || origin == mesh_proto.GlobalResourceOrigin
 	case config_core.Zone:
-		origin, _ := ResourceOrigin(r.GetMeta())
-		return origin == mesh_proto.ZoneResourceOrigin
+		origin, ok := resourceOrigin(labels)
+		return !ok || origin == mesh_proto.ZoneResourceOrigin
 	default:
 		return true
 	}
 }
 
-func GetDisplayName(r Resource) string {
+func GetDisplayName(rm ResourceMeta) string {
 	// prefer display name as it's more predictable, because
 	// * Kubernetes expects sorting to be by just a name. Considering suffix with namespace breaks this
 	// * When policies are synced to Zone, hash suffix also breaks sorting
-	if labels := r.GetMeta().GetLabels(); labels != nil && labels[mesh_proto.DisplayName] != "" {
+	if labels := rm.GetLabels(); labels != nil && labels[mesh_proto.DisplayName] != "" {
 		return labels[mesh_proto.DisplayName]
 	}
-	return r.GetMeta().GetName()
+	return rm.GetName()
 }
 
 func ResourceOrigin(rm ResourceMeta) (mesh_proto.ResourceOrigin, bool) {
-	if labels := rm.GetLabels(); labels != nil && labels[mesh_proto.ResourceOriginLabel] != "" {
+	if rm == nil {
+		return "", false
+	}
+	return resourceOrigin(rm.GetLabels())
+}
+
+func resourceOrigin(labels map[string]string) (mesh_proto.ResourceOrigin, bool) {
+	if labels != nil && labels[mesh_proto.ResourceOriginLabel] != "" {
 		return mesh_proto.ResourceOrigin(labels[mesh_proto.ResourceOriginLabel]), true
 	}
 	return "", false
+}
+
+func ComputeLabels(
+	rd ResourceTypeDescriptor,
+	spec ResourceSpec,
+	existingLabels map[string]string,
+	resourceNameExtensions ResourceNameExtensions,
+	mesh string,
+	mode config_core.CpMode,
+	isK8s bool,
+	systemNamespace string,
+	localZone string,
+) (map[string]string, error) {
+	labels := map[string]string{}
+	if len(existingLabels) > 0 {
+		labels = existingLabels
+	}
+
+	setIfNotExist := func(k, v string) {
+		if _, ok := labels[k]; !ok {
+			labels[k] = v
+		}
+	}
+
+	getMeshOrDefault := func() string {
+		if mesh != "" {
+			return mesh
+		}
+		return DefaultMesh
+	}
+
+	if rd.Scope == ScopeMesh {
+		setIfNotExist(metadata.KumaMeshLabel, getMeshOrDefault())
+	}
+
+	if mode == config_core.Zone {
+		// If resource can't be created on Zone (like Mesh), there is no point in adding
+		// 'kuma.io/zone', 'kuma.io/origin' and 'kuma.io/env' labels even if the zone is non-federated
+		if rd.KDSFlags.Has(AllowedOnZoneSelector) {
+			setIfNotExist(mesh_proto.ResourceOriginLabel, string(mesh_proto.ZoneResourceOrigin))
+			if labels[mesh_proto.ResourceOriginLabel] != string(mesh_proto.GlobalResourceOrigin) {
+				setIfNotExist(mesh_proto.ZoneTag, localZone)
+				env := mesh_proto.UniversalEnvironment
+				if isK8s {
+					env = mesh_proto.KubernetesEnvironment
+				}
+				setIfNotExist(mesh_proto.EnvTag, env)
+			}
+		}
+	}
+
+	if isK8s && IsLocallyOriginated(mode, labels) {
+		ns, ok := resourceNameExtensions[mesh_proto.KubeNamespaceTag]
+		if ok && ns != "" {
+			setIfNotExist(mesh_proto.KubeNamespaceTag, ns)
+		}
+	}
+
+	if ns, ok := resourceNameExtensions[mesh_proto.KubeNamespaceTag]; ok && rd.IsPolicy && rd.IsPluginOriginated && IsLocallyOriginated(mode, labels) {
+		var role mesh_proto.PolicyRole
+		switch ns {
+		case systemNamespace:
+			role = mesh_proto.SystemPolicyRole
+		default:
+			var err error
+			role, err = ComputePolicyRole(spec.(Policy), ns)
+			if err != nil {
+				return nil, err
+			}
+		}
+		labels[mesh_proto.PolicyRoleLabel] = string(role)
+	}
+
+	return labels, nil
+}
+
+func ComputePolicyRole(p Policy, ns string) (mesh_proto.PolicyRole, error) {
+	hasTo := false
+	if pwtl, ok := p.(PolicyWithToList); ok && len(pwtl.GetToList()) > 0 {
+		hasTo = true
+	}
+
+	hasFrom := false
+	if pwfl, ok := p.(PolicyWithFromList); ok && len(pwfl.GetFromList()) > 0 {
+		hasFrom = true
+	}
+
+	if hasFrom || !(hasTo || hasFrom) {
+		// if there is 'from' or neither (single item)
+		return mesh_proto.WorkloadOwnerPolicyRole, nil
+	}
+
+	isProducerItem := func(tr common_api.TargetRef) bool {
+		return tr.Kind == common_api.MeshService && tr.Name != "" && (tr.Namespace == "" || tr.Namespace == ns)
+	}
+
+	producerItems := 0
+	for _, item := range p.(PolicyWithToList).GetToList() {
+		if isProducerItem(item.GetTargetRef()) {
+			producerItems++
+		}
+	}
+
+	switch {
+	case producerItems == len(p.(PolicyWithToList).GetToList()):
+		return mesh_proto.ProducerPolicyRole, nil
+	case producerItems == 0:
+		return mesh_proto.ConsumerPolicyRole, nil
+	default:
+		return "", errors.New("it's not allowed to mix producer and consumer items in the same policy")
+	}
+}
+
+func PolicyRole(rm ResourceMeta) mesh_proto.PolicyRole {
+	if rm == nil || rm.GetLabels() == nil || rm.GetLabels()[mesh_proto.PolicyRoleLabel] == "" {
+		return mesh_proto.SystemPolicyRole
+	}
+	return mesh_proto.PolicyRole(rm.GetLabels()[mesh_proto.PolicyRoleLabel])
 }
 
 // ZoneOfResource returns zone from which the resource was synced to Global CP
@@ -463,11 +592,6 @@ func IsShadowedResource(r Resource) bool {
 		return true
 	}
 	return false
-}
-
-func equalNames(mesh, n1, n2 string) bool {
-	// instead of dragging the info if Zone is federated or not we can simply check 3 possible combinations
-	return n1 == n2 || hash.HashedName(mesh, n1) == n2 || hash.HashedName(mesh, n2) == n1
 }
 
 func MetaToResourceKey(meta ResourceMeta) ResourceKey {
@@ -577,4 +701,219 @@ type PolicyWithFromList interface {
 type PolicyWithSingleItem interface {
 	Policy
 	GetPolicyItem() PolicyItem
+}
+
+func IndexByKey[T Resource](resources []T) map[ResourceKey]T {
+	indexedResources := make(map[ResourceKey]T)
+	for _, resource := range resources {
+		key := MetaToResourceKey(resource.GetMeta())
+		indexedResources[key] = resource
+	}
+	return indexedResources
+}
+
+// Resource can implement defaulter to provide static default fields.
+// Kubernetes Webhook and Resource Manager will make sure that Default() is called before Create/Update
+type Defaulter interface {
+	Resource
+	Default() error
+}
+
+type ResourceIdentifier struct {
+	Name      string
+	Mesh      string
+	Namespace string
+	Zone      string
+}
+
+func NewResourceIdentifier(r Resource) ResourceIdentifier {
+	return ResourceIdentifier{
+		Name:      GetDisplayName(r.GetMeta()),
+		Mesh:      r.GetMeta().GetMesh(),
+		Namespace: r.GetMeta().GetLabels()[mesh_proto.KubeNamespaceTag],
+		Zone:      r.GetMeta().GetLabels()[mesh_proto.ZoneTag],
+	}
+}
+
+func TargetRefToResourceIdentifier(meta ResourceMeta, tr common_api.TargetRef) ResourceIdentifier {
+	switch tr.Kind {
+	case common_api.Mesh:
+		return ResourceIdentifier{
+			Name: meta.GetMesh(),
+		}
+	default:
+		var namespace string
+		if tr.Namespace != "" {
+			namespace = tr.Namespace
+		} else {
+			namespace = meta.GetLabels()[mesh_proto.KubeNamespaceTag]
+		}
+		return ResourceIdentifier{
+			Mesh:      meta.GetMesh(),
+			Zone:      meta.GetLabels()[mesh_proto.ZoneTag],
+			Namespace: namespace,
+			Name:      tr.Name,
+		}
+	}
+}
+
+func ResourceToBackendRef(r Resource, resType ResourceType, port uint32) common_api.BackendRef {
+	id := NewResourceIdentifier(r)
+	return common_api.BackendRef{
+		TargetRef: common_api.TargetRef{
+			Kind:      common_api.TargetRefKind(resType),
+			Name:      id.Name,
+			Namespace: id.Namespace,
+		},
+		Port: pointer.To(port),
+	}
+}
+
+type LabelResourceIdentifierResolver func(ResourceType, map[string]string) *ResourceIdentifier
+
+func ResolveBackendRef(meta ResourceMeta, br common_api.BackendRef, resolver LabelResourceIdentifierResolver) *ResolvedBackendRef {
+	switch {
+	case br.Kind == common_api.MeshService && br.ReferencesRealObject():
+	case br.Kind == common_api.MeshExternalService:
+	case br.Kind == common_api.MeshMultiZoneService:
+	default:
+		return &ResolvedBackendRef{Ref: pointer.To(LegacyBackendRef(br))}
+	}
+
+	rr := RealResourceBackendRef{
+		Resource: &TypedResourceIdentifier{
+			ResourceIdentifier: TargetRefToResourceIdentifier(meta, br.TargetRef),
+			ResourceType:       ResourceType(br.Kind),
+		},
+		Weight: pointer.DerefOr(br.Weight, 1),
+	}
+
+	if len(br.Labels) > 0 {
+		ri := resolver(ResourceType(br.Kind), br.Labels)
+		if ri == nil {
+			return nil
+		}
+		rr.Resource.ResourceIdentifier = *ri
+	}
+
+	if br.Port != nil {
+		rr.Resource.SectionName = fmt.Sprintf("%d", *br.Port)
+	}
+
+	return &ResolvedBackendRef{Ref: &rr}
+}
+
+func (r ResourceIdentifier) String() string {
+	var pairs []string
+	if r.Mesh != "" {
+		pairs = append(pairs, fmt.Sprintf("mesh/%s", r.Mesh))
+	}
+	if r.Zone != "" {
+		pairs = append(pairs, fmt.Sprintf("zone/%s", r.Zone))
+	}
+	if r.Namespace != "" {
+		pairs = append(pairs, fmt.Sprintf("namespace/%s", r.Namespace))
+	}
+	if r.Name != "" {
+		pairs = append(pairs, fmt.Sprintf("name/%s", r.Name))
+	}
+	return strings.Join(pairs, ":")
+}
+
+type TypedResourceIdentifier struct {
+	ResourceIdentifier
+
+	ResourceType ResourceType
+	SectionName  string
+}
+
+type IsResolvedBackendRef interface {
+	isResolvedBackendRef()
+}
+
+type ResolvedBackendRef struct {
+	// Ref is either LegacyBackendRef or RealResourceBackendRef
+	Ref IsResolvedBackendRef
+}
+
+func NewResolvedBackendRef(r IsResolvedBackendRef) *ResolvedBackendRef {
+	return &ResolvedBackendRef{Ref: r}
+}
+
+func (rbr *ResolvedBackendRef) ReferencesRealResource() bool {
+	if rbr == nil {
+		return false
+	}
+	if rbr.Ref == nil {
+		return false
+	}
+	_, ok := rbr.Ref.(*RealResourceBackendRef)
+	return ok
+}
+
+func (rbr *ResolvedBackendRef) ResourceOrNil() *TypedResourceIdentifier {
+	if rr := rbr.RealResourceBackendRef(); rr != nil {
+		return rr.Resource
+	}
+	return nil
+}
+
+func (rbr *ResolvedBackendRef) LegacyBackendRef() *LegacyBackendRef {
+	if lbr, ok := rbr.Ref.(*LegacyBackendRef); ok {
+		return lbr
+	}
+	return nil
+}
+
+func (rbr *ResolvedBackendRef) RealResourceBackendRef() *RealResourceBackendRef {
+	if rr, ok := rbr.Ref.(*RealResourceBackendRef); ok {
+		return rr
+	}
+	return nil
+}
+
+type LegacyBackendRef common_api.BackendRef
+
+func (lbr *LegacyBackendRef) isResolvedBackendRef() {}
+
+type RealResourceBackendRef struct {
+	Resource *TypedResourceIdentifier
+	Weight   uint
+}
+
+func (rbr *RealResourceBackendRef) isResolvedBackendRef() {}
+
+type NewTypedResourceIdentifierFunc func(id *TypedResourceIdentifier)
+
+func WithSectionName(sectionName string) NewTypedResourceIdentifierFunc {
+	return func(id *TypedResourceIdentifier) {
+		id.SectionName = sectionName
+	}
+}
+
+func NewTypedResourceIdentifier(r Resource, opts ...NewTypedResourceIdentifierFunc) TypedResourceIdentifier {
+	tri := TypedResourceIdentifier{
+		ResourceType:       r.Descriptor().Name,
+		ResourceIdentifier: NewResourceIdentifier(r),
+	}
+	for _, opt := range opts {
+		opt(&tri)
+	}
+	return tri
+}
+
+func (ri TypedResourceIdentifier) MarshalText() ([]byte, error) {
+	return []byte(ri.String()), nil
+}
+
+func (ri TypedResourceIdentifier) String() string {
+	var pairs []string
+	if ri.ResourceType != "" {
+		pairs = append(pairs, strings.ToLower(string(ri.ResourceType)))
+	}
+	pairs = append(pairs, ri.ResourceIdentifier.String())
+	if ri.SectionName != "" {
+		pairs = append(pairs, fmt.Sprintf("section/%s", ri.SectionName))
+	}
+	return strings.Join(pairs, ":")
 }

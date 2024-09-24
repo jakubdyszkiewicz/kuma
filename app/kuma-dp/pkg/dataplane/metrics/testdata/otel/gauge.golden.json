@@ -22,6 +22,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -37,7 +44,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 1
         },
         {
@@ -57,6 +64,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -72,7 +86,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 2
         },
         {
@@ -92,6 +106,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -107,7 +128,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 3
         },
         {
@@ -127,6 +148,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -142,7 +170,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 100
         },
         {
@@ -162,6 +190,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -177,7 +212,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 110
         },
         {
@@ -197,6 +232,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -212,7 +254,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 120
         },
         {
@@ -232,6 +274,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -247,7 +296,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 4
         },
         {
@@ -267,6 +316,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -282,7 +338,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 5
         },
         {
@@ -302,6 +358,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -317,7 +380,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 6
         },
         {
@@ -337,6 +400,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -352,7 +422,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 7
         },
         {
@@ -372,6 +442,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -387,7 +464,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 8
         },
         {
@@ -407,6 +484,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -422,7 +506,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 9
         }
       ]
@@ -451,6 +535,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -466,7 +557,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 21
         },
         {
@@ -486,6 +577,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -501,7 +599,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 22
         },
         {
@@ -521,6 +619,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -536,7 +641,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 23
         },
         {
@@ -556,6 +661,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -571,7 +683,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 200
         },
         {
@@ -591,6 +703,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -606,7 +725,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 210
         },
         {
@@ -626,6 +745,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -641,7 +767,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 220
         },
         {
@@ -661,6 +787,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -676,7 +809,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 24
         },
         {
@@ -696,6 +829,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -711,7 +851,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 25
         },
         {
@@ -731,6 +871,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -746,7 +893,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 26
         },
         {
@@ -766,6 +913,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -781,7 +935,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 27
         },
         {
@@ -801,6 +955,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -816,7 +977,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 28
         },
         {
@@ -836,6 +997,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -851,7 +1019,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 29
         }
       ]
@@ -880,6 +1048,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -895,7 +1070,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 31
         },
         {
@@ -915,6 +1090,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -930,7 +1112,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 32
         },
         {
@@ -950,6 +1132,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -965,7 +1154,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 33
         },
         {
@@ -985,6 +1174,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1000,7 +1196,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 300
         },
         {
@@ -1020,6 +1216,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1035,7 +1238,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 310
         },
         {
@@ -1055,6 +1258,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1070,7 +1280,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 320
         },
         {
@@ -1090,6 +1300,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1105,7 +1322,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 34
         },
         {
@@ -1125,6 +1342,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1140,7 +1364,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 35
         },
         {
@@ -1160,6 +1384,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1175,7 +1406,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 36
         },
         {
@@ -1195,6 +1426,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1210,7 +1448,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 37
         },
         {
@@ -1230,6 +1468,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1245,7 +1490,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 38
         },
         {
@@ -1265,6 +1510,13 @@
               }
             },
             {
+              "Key": "extraLabel",
+              "Value": {
+                "Type": "STRING",
+                "Value": "test"
+              }
+            },
+            {
               "Key": "mesh",
               "Value": {
                 "Type": "STRING",
@@ -1280,7 +1532,7 @@
             }
           ],
           "StartTime": "0001-01-01T00:00:00Z",
-          "Time": "0001-01-01T00:00:00Z",
+          "Time": "2024-01-01T01:01:01.000000001Z",
           "Value": 39
         }
       ]

@@ -11,17 +11,13 @@ var DefaultEnabled = []string{
 	"meshhttproutes",
 	"meshloadbalancingstrategies",
 	"meshmetrics",
+	"meshpassthroughs",
 	"meshproxypatches",
 	"meshratelimits",
 	"meshretries",
 	"meshtcproutes",
 	"meshtimeouts",
+	"meshtlses",
 	"meshtraces",
 	"meshtrafficpermissions",
-}
-
-func Default() *Config {
-	return &Config{
-		Enabled: DefaultEnabled,
-	}
 }

@@ -1,12 +1,18 @@
 package builders
 
 import (
+	. "github.com/onsi/gomega"
+
 	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	meshexternalservice_api "github.com/kumahq/kuma/pkg/core/resources/apis/meshexternalservice/api/v1alpha1"
 	meshservice_api "github.com/kumahq/kuma/pkg/core/resources/apis/meshservice/api/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
 	core_xds "github.com/kumahq/kuma/pkg/core/xds"
 	"github.com/kumahq/kuma/pkg/test/resources/builders"
 	"github.com/kumahq/kuma/pkg/test/resources/samples"
 	"github.com/kumahq/kuma/pkg/test/xds"
+	"github.com/kumahq/kuma/pkg/xds/context"
 	xds_context "github.com/kumahq/kuma/pkg/xds/context"
 )
 
@@ -18,10 +24,11 @@ func Context() *ContextBuilder {
 	return &ContextBuilder{
 		res: &xds_context.Context{
 			Mesh: xds_context.MeshContext{
-				Resource:            samples.MeshDefault(),
-				EndpointMap:         map[core_xds.ServiceName][]core_xds.Endpoint{},
-				ServicesInformation: map[string]*xds_context.ServiceInformation{},
-				MeshServiceByName:   map[string]*meshservice_api.MeshServiceResource{},
+				Resource:                        samples.MeshDefault(),
+				EndpointMap:                     map[core_xds.ServiceName][]core_xds.Endpoint{},
+				ServicesInformation:             map[string]*xds_context.ServiceInformation{},
+				MeshExternalServiceByIdentifier: map[model.ResourceIdentifier]*meshexternalservice_api.MeshExternalServiceResource{},
+				MeshServiceByIdentifier:         map[model.ResourceIdentifier]*meshservice_api.MeshServiceResource{},
 			},
 			ControlPlane: &xds_context.ControlPlaneContext{
 				CLACache: &xds.DummyCLACache{OutboundTargets: map[core_xds.ServiceName][]core_xds.Endpoint{}},
@@ -34,7 +41,10 @@ func Context() *ContextBuilder {
 
 func (mc *ContextBuilder) Build() *xds_context.Context {
 	for _, ms := range mc.res.Mesh.Resources.MeshServices().Items {
-		mc.res.Mesh.MeshServiceByName[ms.GetMeta().GetName()] = ms
+		mc.res.Mesh.MeshServiceByIdentifier[model.NewResourceIdentifier(ms)] = ms
+	}
+	for _, mes := range mc.res.Mesh.Resources.MeshExternalServices().Items {
+		mc.res.Mesh.MeshExternalServiceByIdentifier[model.NewResourceIdentifier(mes)] = mes
 	}
 	return mc.res
 }
@@ -66,8 +76,24 @@ func (mc *ContextBuilder) WithResources(resources xds_context.Resources) *Contex
 	return mc
 }
 
-func (mc *ContextBuilder) WithMesh(mesh *builders.MeshBuilder) *ContextBuilder {
+func (mc *ContextBuilder) WithMeshBuilder(mesh *builders.MeshBuilder) *ContextBuilder {
 	mc.res.Mesh.Resource = mesh.Build()
+	return mc
+}
+
+func (mc *ContextBuilder) WithMeshContext(mesh *xds_context.MeshContext) *ContextBuilder {
+	mc.res.Mesh = *mesh
+	return mc
+}
+
+func (mc *ContextBuilder) WithMeshLocalResources(rs []model.Resource) *ContextBuilder {
+	mc.res.Mesh.Resources = context.Resources{MeshLocalResources: map[model.ResourceType]model.ResourceList{}}
+	for _, p := range rs {
+		if _, ok := mc.res.Mesh.Resources.MeshLocalResources[p.Descriptor().Name]; !ok {
+			mc.res.Mesh.Resources.MeshLocalResources[p.Descriptor().Name] = registry.Global().MustNewList(p.Descriptor().Name)
+		}
+		Expect(mc.res.Mesh.Resources.MeshLocalResources[p.Descriptor().Name].AddItem(p)).To(Succeed())
+	}
 	return mc
 }
 

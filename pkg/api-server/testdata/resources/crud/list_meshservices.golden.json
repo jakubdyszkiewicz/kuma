@@ -17,7 +17,7 @@
      {
       "port": 6379,
       "targetPort": 6379,
-      "protocol": "tcp"
+      "appProtocol": "tcp"
      }
     ]
    },
@@ -27,7 +27,8 @@
       "ip": "10.0.0.1"
      }
     ],
-    "tls": {}
+    "tls": {},
+    "dataplaneProxies": {}
    }
   },
   {
@@ -46,7 +47,7 @@
      {
       "port": 6379,
       "targetPort": 6379,
-      "protocol": "tcp"
+      "appProtocol": "tcp"
      }
     ]
    },
@@ -56,7 +57,8 @@
       "ip": "10.0.0.2"
      }
     ],
-    "tls": {}
+    "tls": {},
+    "dataplaneProxies": {}
    }
   }
  ],

@@ -7,6 +7,7 @@ import (
 
 	"github.com/kumahq/kuma/pkg/test"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/api"
+	"github.com/kumahq/kuma/test/e2e_env/kubernetes/appprobeproxy"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/connectivity"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/container_patch"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/defaults"
@@ -21,10 +22,12 @@ import (
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/kic"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/membership"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshcircuitbreaker"
+	meshexternalservices "github.com/kumahq/kuma/test/e2e_env/kubernetes/meshexternalservice"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshfaultinjection"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshhealthcheck"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshhttproute"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshmetric"
+	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshpassthrough"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshproxypatch"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshratelimit"
 	"github.com/kumahq/kuma/test/e2e_env/kubernetes/meshretry"
@@ -43,15 +46,10 @@ func TestE2E(t *testing.T) {
 	test.RunE2ESpecs(t, "E2E Kubernetes Suite")
 }
 
-var _ = E2ESynchronizedBeforeSuite(kubernetes.SetupAndGetState, kubernetes.RestoreState)
-
-// SynchronizedAfterSuite keeps the main process alive until all other processes finish.
-// Otherwise, we would close port-forward to the CP and remaining tests executed in different processes may fail.
-var _ = SynchronizedAfterSuite(func() {}, func() {})
-
 var (
-	_ = ReportAfterSuite("cp logs", kubernetes.PrintCPLogsOnFailure)
-	_ = ReportAfterSuite("kube state", kubernetes.PrintKubeState)
+	_ = E2ESynchronizedBeforeSuite(kubernetes.SetupAndGetState, kubernetes.RestoreState)
+	_ = SynchronizedAfterSuite(func() {}, kubernetes.SynchronizedAfterSuite)
+	_ = ReportAfterSuite("kubernetes after suite", kubernetes.AfterSuite)
 )
 
 var (
@@ -78,6 +76,7 @@ var (
 	_ = Describe("Defaults", defaults.Defaults, Ordered)
 	_ = Describe("External Services", externalservices.ExternalServices, Ordered)
 	_ = Describe("External Services Permissive MTLS", externalservices.PermissiveMTLS, Ordered)
+	_ = Describe("Mesh External Services", meshexternalservices.MeshExternalServices, Ordered)
 	_ = Describe("ExternalName Services", externalname_services.ExternalNameServices, Ordered)
 	_ = Describe("Virtual Outbound", virtualoutbound.VirtualOutbound, Ordered)
 	_ = Describe("Kong Ingress Controller", kic.KICKubernetes, Ordered)
@@ -97,4 +96,6 @@ var (
 	_ = Describe("Connectivity - Headless Services", connectivity.HeadlessServices, Ordered)
 	_ = Describe("Connectivity - Exclude Outbound Port", connectivity.ExcludeOutboundPort, Ordered)
 	_ = Describe("Wait for Envoy", graceful.WaitForEnvoyReady, Ordered)
+	_ = Describe("MeshPassthrough", meshpassthrough.MeshPassthrough, Ordered)
+	_ = Describe("ApplicationProbeProxy", appprobeproxy.ApplicationProbeProxy, Ordered)
 )

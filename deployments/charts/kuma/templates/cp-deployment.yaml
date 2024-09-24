@@ -111,6 +111,7 @@ spec:
       {{- end }}
       hostNetwork: {{ .Values.controlPlane.hostNetwork }}
       terminationGracePeriodSeconds: {{ .Values.controlPlane.terminationGracePeriodSeconds }}
+      {{ include "kuma.dnsConfig" (dict "dns" .Values.controlPlane.dns) | nindent 6 | trim }}
       {{- if (eq .Values.controlPlane.environment "universal") }}
       initContainers:
         - name: migration
@@ -167,6 +168,9 @@ spec:
           securityContext:
           {{- toYaml .Values.controlPlane.containerSecurityContext | trim | nindent 12 }}
           env:
+          {{- if .Values.controlPlane.envVarEntries }}
+            {{- .Values.controlPlane.envVarEntries | toYaml | nindent 12 }}
+          {{- end }}
           {{- range $key, $value := $mergedEnv }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -182,6 +186,16 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  containerName: control-plane
+                  resource: limits.memory
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  containerName: control-plane
+                  resource: limits.cpu
           args:
             - run
             - --log-level={{ .Values.controlPlane.logLevel }}

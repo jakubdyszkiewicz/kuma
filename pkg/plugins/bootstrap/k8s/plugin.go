@@ -29,7 +29,6 @@ import (
 	k8s_common "github.com/kumahq/kuma/pkg/plugins/common/k8s"
 	k8s_extensions "github.com/kumahq/kuma/pkg/plugins/extensions/k8s"
 	"github.com/kumahq/kuma/pkg/plugins/resources/k8s"
-	"github.com/kumahq/kuma/pkg/util/pointer"
 )
 
 var _ core_plugins.BootstrapPlugin = &plugin{}
@@ -59,9 +58,6 @@ func (p *plugin) BeforeBootstrap(b *core_runtime.Builder, cfg core_plugins.Plugi
 		restClientConfig,
 		kube_ctrl.Options{
 			Scheme: scheme,
-			Cache: cache.Options{
-				DefaultUnsafeDisableDeepCopy: pointer.To(true),
-			},
 			// Admission WebHook Server
 			WebhookServer: kube_webhook.NewServer(kube_webhook.Options{
 				Host:    b.Config().Runtime.Kubernetes.AdmissionServer.Address,
@@ -190,6 +186,11 @@ type kubeComponentManager struct {
 
 var _ component.Manager = &kubeComponentManager{}
 
+const (
+	// See https://github.com/kubernetes-sigs/controller-runtime/blob/785762383bc52f4b309dbc9d8f8e9239ff391198/pkg/manager/internal.go#L604
+	leaderElectionLost = "leader election lost"
+)
+
 func (cm *kubeComponentManager) Start(done <-chan struct{}) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -200,6 +201,10 @@ func (cm *kubeComponentManager) Start(done <-chan struct{}) error {
 	defer cm.waitForDone()
 
 	if err := cm.Manager.Start(ctx); err != nil {
+		if err.Error() == leaderElectionLost {
+			cm.GetLogger().Info("leader election lost, stopping")
+			return nil
+		}
 		return errors.Wrap(err, "error running Kubernetes Manager")
 	}
 	return nil

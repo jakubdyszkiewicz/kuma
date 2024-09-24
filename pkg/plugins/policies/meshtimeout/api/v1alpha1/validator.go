@@ -2,35 +2,53 @@ package v1alpha1
 
 import (
 	common_api "github.com/kumahq/kuma/api/common/v1alpha1"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/core/validators"
+	"github.com/kumahq/kuma/pkg/util/pointer"
 )
 
 func (r *MeshTimeoutResource) validate() error {
 	var verr validators.ValidationError
 	path := validators.RootedAt("spec")
-	verr.AddErrorAt(path.Field("targetRef"), validateTop(r.Spec.TargetRef))
+	verr.AddErrorAt(path.Field("targetRef"), r.validateTop(r.Spec.TargetRef))
 	if len(r.Spec.To) == 0 && len(r.Spec.From) == 0 {
 		verr.AddViolationAt(path, "at least one of 'from', 'to' has to be defined")
 	}
-	verr.AddErrorAt(path, validateFrom(r.Spec.From, r.Spec.TargetRef.Kind))
-	verr.AddErrorAt(path, validateTo(r.Spec.To, r.Spec.TargetRef.Kind))
+	topLevel := pointer.DerefOr(r.Spec.TargetRef, common_api.TargetRef{Kind: common_api.Mesh})
+	verr.AddErrorAt(path, validateFrom(r.Spec.From, topLevel.Kind))
+	verr.AddErrorAt(path, validateTo(r.Spec.To, topLevel.Kind))
 	return verr.OrNil()
 }
 
-func validateTop(targetRef common_api.TargetRef) validators.ValidationError {
-	targetRefErr := mesh.ValidateTargetRef(targetRef, &mesh.ValidateTargetRefOpts{
-		SupportedKinds: []common_api.TargetRefKind{
-			common_api.Mesh,
-			common_api.MeshSubset,
-			common_api.MeshGateway,
-			common_api.MeshService,
-			common_api.MeshServiceSubset,
-			common_api.MeshHTTPRoute,
-		},
-		GatewayListenerTagsAllowed: true,
-	})
-	return targetRefErr
+func (r *MeshTimeoutResource) validateTop(targetRef *common_api.TargetRef) validators.ValidationError {
+	if targetRef == nil {
+		return validators.ValidationError{}
+	}
+	switch core_model.PolicyRole(r.GetMeta()) {
+	case mesh_proto.SystemPolicyRole:
+		return mesh.ValidateTargetRef(*targetRef, &mesh.ValidateTargetRefOpts{
+			SupportedKinds: []common_api.TargetRefKind{
+				common_api.Mesh,
+				common_api.MeshSubset,
+				common_api.MeshGateway,
+				common_api.MeshService,
+				common_api.MeshServiceSubset,
+				common_api.MeshHTTPRoute,
+			},
+			GatewayListenerTagsAllowed: true,
+		})
+	default:
+		return mesh.ValidateTargetRef(*targetRef, &mesh.ValidateTargetRefOpts{
+			SupportedKinds: []common_api.TargetRefKind{
+				common_api.Mesh,
+				common_api.MeshSubset,
+				common_api.MeshService,
+				common_api.MeshServiceSubset,
+			},
+		})
+	}
 }
 
 func validateFrom(from []From, topLevelKind common_api.TargetRefKind) validators.ValidationError {
@@ -69,11 +87,14 @@ func validateTo(to []To, topLevelKind common_api.TargetRefKind) validators.Valid
 		case common_api.MeshHTTPRoute, common_api.MeshGateway:
 			supportedKinds = []common_api.TargetRefKind{
 				common_api.Mesh,
+				common_api.MeshExternalService,
 			}
 		default:
 			supportedKinds = []common_api.TargetRefKind{
 				common_api.Mesh,
 				common_api.MeshService,
+				common_api.MeshExternalService,
+				common_api.MeshMultiZoneService,
 			}
 		}
 

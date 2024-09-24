@@ -28,16 +28,16 @@ import (
 var runLog = core.Log.WithName("kuma-dp").WithName("run").WithName("envoy")
 
 type BootstrapParams struct {
-	Dataplane           rest.Resource
-	DNSPort             uint32
-	EmptyDNSPort        uint32
-	EnvoyVersion        EnvoyVersion
-	DynamicMetadata     map[string]string
-	Workdir             string
-	MetricsSocketPath   string
-	AccessLogSocketPath string
-	MetricsCertPath     string
-	MetricsKeyPath      string
+	Dataplane            rest.Resource
+	DNSPort              uint32
+	ReadinessPort        uint32
+	AppProbeProxyEnabled bool
+	EnvoyVersion         EnvoyVersion
+	DynamicMetadata      map[string]string
+	Workdir              string
+	MetricsCertPath      string
+	MetricsKeyPath       string
+	SystemCaPath         string
 }
 
 type BootstrapConfigFactoryFunc func(ctx context.Context, url string, cfg kuma_dp.Config, params BootstrapParams) (*envoy_bootstrap_v3.Bootstrap, *types.KumaSidecarConfiguration, error)
@@ -172,8 +172,20 @@ func (e *Envoy) WaitForDone() {
 	e.wg.Wait()
 }
 
-func (e *Envoy) DrainConnections() error {
+func (e *Envoy) FailHealthchecks() error {
 	resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/healthcheck/fail", e.opts.AdminPort), "", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return errors.Errorf("expected 200 status code, got %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (e *Envoy) DrainForever() error {
+	resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/drain_listeners?inboundonly&graceful&skip_exit", e.opts.AdminPort), "", nil)
 	if err != nil {
 		return err
 	}

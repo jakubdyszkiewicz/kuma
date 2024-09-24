@@ -2,17 +2,19 @@ package parameters
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/kumahq/kuma/pkg/transparentproxy/config"
+	"github.com/kumahq/kuma/pkg/transparentproxy/consts"
 )
+
+var _ ParameterBuilder = &ProtocolParameter{}
 
 type ProtocolParameter struct {
 	name       string
 	parameters []ParameterBuilder
 }
 
-func (p *ProtocolParameter) Build(verbose bool) string {
+func (p *ProtocolParameter) Build(verbose bool) []string {
 	result := []string{p.name}
 
 	// If the -p or --protocol was specified and if and only if an unknown option is encountered,
@@ -22,11 +24,11 @@ func (p *ProtocolParameter) Build(verbose bool) string {
 	// ref. iptables-extensions(8) > MATCH EXTENSIONS
 	for _, parameter := range p.parameters {
 		if parameter != nil {
-			result = append(result, parameter.Build(verbose))
+			result = append(result, parameter.Build(verbose)...)
 		}
 	}
 
-	return strings.Join(result, " ")
+	return result
 }
 
 func (p *ProtocolParameter) Negate() ParameterBuilder {
@@ -37,6 +39,8 @@ func (p *ProtocolParameter) Negate() ParameterBuilder {
 	return p
 }
 
+var _ ParameterBuilder = &TcpUdpParameter{}
+
 type TcpUdpParameter struct {
 	long     string
 	short    string
@@ -44,7 +48,11 @@ type TcpUdpParameter struct {
 	negative bool
 }
 
-func (p *TcpUdpParameter) Build(verbose bool) string {
+func (p *TcpUdpParameter) Build(verbose bool) []string {
+	if p.value == "" {
+		return nil
+	}
+
 	flag := p.short
 
 	if verbose {
@@ -57,9 +65,7 @@ func (p *TcpUdpParameter) Build(verbose bool) string {
 		result = append([]string{"!"}, result...)
 	}
 
-	result = append(result, p.value)
-
-	return strings.Join(result, " ")
+	return append(result, p.value)
 }
 
 func (p *TcpUdpParameter) Negate() ParameterBuilder {
@@ -68,7 +74,7 @@ func (p *TcpUdpParameter) Negate() ParameterBuilder {
 	return p
 }
 
-func destinationPort(port uint16, negative bool) *TcpUdpParameter {
+func destinationPort[T ~uint16](port T, negative bool) *TcpUdpParameter {
 	return &TcpUdpParameter{
 		long:     "--destination-port",
 		short:    "--dport",
@@ -77,31 +83,39 @@ func destinationPort(port uint16, negative bool) *TcpUdpParameter {
 	}
 }
 
-func DestinationPort(port uint16) *TcpUdpParameter {
+func DestinationPort[T ~uint16](port T) *TcpUdpParameter {
 	return destinationPort(port, false)
 }
 
-func DestinationPortRangeOrValue(uIDsToPorts config.UIDsToPorts) *TcpUdpParameter {
+func DestinationPortRangeOrValue(exclusion config.Exclusion) *TcpUdpParameter {
+	if exclusion.Ports == "" {
+		return nil
+	}
+
 	return &TcpUdpParameter{
 		long:  "--destination-port",
 		short: "--dport",
-		value: string(uIDsToPorts.Ports),
+		value: string(exclusion.Ports),
 	}
 }
 
-func NotDestinationPort(port uint16) *TcpUdpParameter {
+func NotDestinationPort[T ~uint16](port T) *TcpUdpParameter {
 	return destinationPort(port, true)
 }
 
-func NotDestinationPortIf(predicate func() bool, port uint16) *TcpUdpParameter {
-	if predicate() {
+func NotDestinationPortIf[T ~uint16](predicate func() bool, port T) *TcpUdpParameter {
+	return NotDestinationPortIfBool(predicate(), port)
+}
+
+func NotDestinationPortIfBool[T ~uint16](condition bool, port T) *TcpUdpParameter {
+	if condition {
 		return destinationPort(port, true)
 	}
 
 	return nil
 }
 
-func sourcePort(port uint16, negative bool) *TcpUdpParameter {
+func sourcePort[T ~uint16](port T, negative bool) *TcpUdpParameter {
 	return &TcpUdpParameter{
 		long:     "--source-port",
 		short:    "--sport",
@@ -110,11 +124,11 @@ func sourcePort(port uint16, negative bool) *TcpUdpParameter {
 	}
 }
 
-func SourcePort(port uint16) *TcpUdpParameter {
+func SourcePort[T ~uint16](port T) *TcpUdpParameter {
 	return sourcePort(port, false)
 }
 
-func tcpUdp(proto string, params []*TcpUdpParameter) *ProtocolParameter {
+func tcpUdp(proto consts.ProtocolL4, params []*TcpUdpParameter) *ProtocolParameter {
 	var parameters []ParameterBuilder
 
 	for _, parameter := range params {
@@ -124,24 +138,51 @@ func tcpUdp(proto string, params []*TcpUdpParameter) *ProtocolParameter {
 	}
 
 	return &ProtocolParameter{
-		name:       proto,
+		name:       string(proto),
 		parameters: parameters,
 	}
 }
 
 func Udp(udpParameters ...*TcpUdpParameter) *ProtocolParameter {
-	return tcpUdp("udp", udpParameters)
+	return tcpUdp(consts.ProtocolUDP, udpParameters)
+}
+
+func UdpIf(predicate bool, udpParameters ...*TcpUdpParameter) *ProtocolParameter {
+	if !predicate {
+		return nil
+	}
+
+	return tcpUdp(consts.ProtocolUDP, udpParameters)
 }
 
 func Tcp(tcpParameters ...*TcpUdpParameter) *ProtocolParameter {
-	return tcpUdp("tcp", tcpParameters)
+	return tcpUdp(consts.ProtocolTCP, tcpParameters)
 }
 
-func Protocol(parameter *ProtocolParameter) *Parameter {
+func TcpIf(predicate bool, tcpParameters ...*TcpUdpParameter) *ProtocolParameter {
+	if !predicate {
+		return nil
+	}
+
+	return tcpUdp(consts.ProtocolTCP, tcpParameters)
+}
+
+func Protocol(p ...*ProtocolParameter) *Parameter {
+	var parameters []ParameterBuilder
+	for _, parameter := range p {
+		if parameter != nil {
+			parameters = append(parameters, parameter)
+		}
+	}
+
+	if parameters == nil {
+		return nil
+	}
+
 	return &Parameter{
 		long:       "--protocol",
 		short:      "-p",
-		parameters: []ParameterBuilder{parameter},
+		parameters: parameters,
 		negate:     negateSelf,
 	}
 }

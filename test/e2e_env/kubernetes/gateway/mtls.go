@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gruntwork-io/terratest/modules/k8s"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -30,7 +29,7 @@ mesh: gateway-mtls
 spec:
   selectors:
   - match:
-      kuma.io/service: mtls-edge-gateway
+      kuma.io/service: mtls-edge-gateway_gateway-mtls_svc
   conf:
     listeners:
     - port: 8080
@@ -93,6 +92,10 @@ type: system.kuma.io/secret
 		Expect(err).ToNot(HaveOccurred())
 	})
 
+	AfterEachFailure(func() {
+		DebugKube(kubernetes.Cluster, meshName, namespace, clientNamespace)
+	})
+
 	E2EAfterAll(func() {
 		Expect(kubernetes.Cluster.TriggerDeleteNamespace(namespace)).To(Succeed())
 		Expect(kubernetes.Cluster.TriggerDeleteNamespace(clientNamespace)).To(Succeed())
@@ -109,7 +112,7 @@ mesh: gateway-mtls
 spec:
   selectors:
   - match:
-      kuma.io/service: mtls-edge-gateway
+      kuma.io/service: mtls-edge-gateway_gateway-mtls_svc
       hostname: example.kuma.io
   conf:
     http:
@@ -314,8 +317,9 @@ spec:
     name: non-accessible-echo-server_gateway-mtls_svc_80
   from:
     - targetRef:
-        kind: MeshService
-        name: not-mtls-edge-gateway
+        kind: MeshSubset
+        tags:
+          kuma.io/service: not-mtls-edge-gateway_gateway-mtls_svc
       default:
         action: Allow`
 			Expect(kubernetes.Cluster.Install(YamlK8s(tp))).To(Succeed())
@@ -343,7 +347,7 @@ mesh: gateway-mtls
 spec:
   selectors:
   - match:
-      kuma.io/service: mtls-edge-gateway
+      kuma.io/service: mtls-edge-gateway_gateway-mtls_svc
       protocol: tcp
   conf:
     tcp:
@@ -360,7 +364,9 @@ spec:
 					testserver.WithMesh(meshName),
 					testserver.WithName("tcp-server"),
 					testserver.WithNamespace(namespace),
-					testserver.WithHealthCheckTCPArgs("health-check", "tcp", "--port", "80"),
+					testserver.WithArgs("health-check", "tcp", "--port", "80"),
+					testserver.WithProbe(testserver.LivenessProbe, testserver.ProbeTcpSocket, 80, ""),
+					testserver.WithProbe(testserver.ReadinessProbe, testserver.ProbeTcpSocket, 80, ""),
 				)).
 				Install(MeshTrafficPermissionAllowAllKubernetes(meshName)).
 				Setup(kubernetes.Cluster)
@@ -389,7 +395,7 @@ mesh: gateway-mtls
 spec:
   selectors:
   - match:
-      kuma.io/service: mtls-edge-gateway
+      kuma.io/service: mtls-edge-gateway_gateway-mtls_svc
       name: tls-passthrough
   conf:
     tcp:
@@ -407,7 +413,7 @@ mesh: gateway-mtls
 spec:
   selectors:
   - match:
-      kuma.io/service: mtls-edge-gateway
+      kuma.io/service: mtls-edge-gateway_gateway-mtls_svc
       name: tls-terminate
   conf:
     tcp:
@@ -434,7 +440,9 @@ spec:
 					testserver.WithMesh(meshName),
 					testserver.WithName("tcp-server"),
 					testserver.WithNamespace(namespace),
-					testserver.WithHealthCheckTCPArgs("health-check", "tcp", "--port", "80"),
+					testserver.WithArgs("health-check", "tcp", "--port", "80"),
+					testserver.WithProbe(testserver.LivenessProbe, testserver.ProbeTcpSocket, 80, ""),
+					testserver.WithProbe(testserver.ReadinessProbe, testserver.ProbeTcpSocket, 80, ""),
 				)).
 				Install(MeshTrafficPermissionAllowAllKubernetes(meshName))
 			Expect(setup.Setup(kubernetes.Cluster)).To(Succeed())
@@ -442,11 +450,7 @@ spec:
 
 		It("should passthrough TLS connections", func() {
 			Eventually(func(g Gomega) {
-				clusterIP, err := k8s.RunKubectlAndGetOutputE(
-					kubernetes.Cluster.GetTesting(),
-					kubernetes.Cluster.GetKubectlOptions(namespace),
-					"get", "service", "mtls-edge-gateway", "-ojsonpath={.spec.clusterIP}",
-				)
+				clusterIP, err := kubernetes.Cluster.GetClusterIP("mtls-edge-gateway", namespace)
 				g.Expect(err).ToNot(HaveOccurred())
 
 				response, err := client.CollectEchoResponse(
@@ -464,11 +468,7 @@ spec:
 
 		It("should not passthrough TLS connections that don't match SNI", func() {
 			Consistently(func(g Gomega) {
-				clusterIP, err := k8s.RunKubectlAndGetOutputE(
-					kubernetes.Cluster.GetTesting(),
-					kubernetes.Cluster.GetKubectlOptions(namespace),
-					"get", "service", "mtls-edge-gateway", "-ojsonpath={.spec.clusterIP}",
-				)
+				clusterIP, err := kubernetes.Cluster.GetClusterIP("mtls-edge-gateway", namespace)
 				g.Expect(err).ToNot(HaveOccurred())
 
 				g.Expect(err).ToNot(HaveOccurred())

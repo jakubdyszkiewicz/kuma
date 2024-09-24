@@ -47,11 +47,17 @@ func virtualOutbound(meshName string, meshBuilder *builders.MeshBuilder) {
 			Install(testserver.Install(
 				testserver.WithNamespace(namespace),
 				testserver.WithMesh(meshName),
-				testserver.WithStatefulSet(true),
+				testserver.WithStatefulSet(),
 				testserver.WithReplicas(2),
 			)).
 			Setup(multizone.KubeZone2)
 		Expect(err).ToNot(HaveOccurred())
+	})
+
+	AfterEachFailure(func() {
+		DebugUniversal(multizone.Global, meshName)
+		DebugKube(multizone.KubeZone1, meshName, namespace)
+		DebugKube(multizone.KubeZone2, meshName, namespace)
 	})
 
 	E2EAfterAll(func() {

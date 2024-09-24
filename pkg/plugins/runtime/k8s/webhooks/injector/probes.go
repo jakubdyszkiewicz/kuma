@@ -3,7 +3,6 @@ package injector
 import (
 	"strconv"
 
-	"github.com/pkg/errors"
 	kube_core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
@@ -28,12 +27,25 @@ func (i *KumaInjector) overrideHTTPProbes(pod *kube_core.Pod) error {
 	if err != nil {
 		return err
 	}
+	var containersNeedingProbes []kube_core.Container
 
-	for _, c := range pod.Spec.Containers {
+	var initContainerComesAfterKumaSidecar bool
+	for _, c := range pod.Spec.InitContainers {
 		if c.Name == util.KumaSidecarContainerName {
-			// we don't want to create virtual probes for Envoy container, because we generate real listener which is not protected by mTLS
+			initContainerComesAfterKumaSidecar = true
 			continue
 		}
+		if initContainerComesAfterKumaSidecar && c.RestartPolicy != nil && *c.RestartPolicy == kube_core.ContainerRestartPolicyAlways {
+			containersNeedingProbes = append(containersNeedingProbes, c)
+		}
+	}
+	for _, c := range pod.Spec.Containers {
+		if c.Name != util.KumaSidecarContainerName {
+			// we don't want to create virtual probes for Envoy container, because we generate real listener which is not protected by mTLS
+			containersNeedingProbes = append(containersNeedingProbes, c)
+		}
+	}
+	for _, c := range containersNeedingProbes {
 		if c.LivenessProbe != nil && c.LivenessProbe.HTTPGet != nil {
 			log.V(1).Info("overriding liveness probe", "container", c.Name)
 			resolveNamedPort(c, c.LivenessProbe)
@@ -78,39 +90,6 @@ func overrideHTTPProbe(probe *kube_core.Probe, virtualPort uint32) error {
 	}
 	probe.HTTPGet.Port = intstr.FromInt(int(virtual.Port()))
 	probe.HTTPGet.Path = virtual.Path()
-	return nil
-}
-
-func setVirtualProbesEnabledAnnotation(annotations metadata.Annotations, pod *kube_core.Pod, cfg runtime_k8s.Injector) error {
-	str := func(b bool) string {
-		if b {
-			return metadata.AnnotationEnabled
-		}
-		return metadata.AnnotationDisabled
-	}
-
-	vpEnabled, vpExist, err := metadata.Annotations(pod.Annotations).GetEnabled(metadata.KumaVirtualProbesAnnotation)
-	if err != nil {
-		return err
-	}
-	gwEnabled, _, err := metadata.Annotations(pod.Annotations).GetEnabled(metadata.KumaGatewayAnnotation)
-	if err != nil {
-		return err
-	}
-
-	if gwEnabled {
-		if vpEnabled {
-			return errors.New("virtual probes can't be enabled in gateway mode")
-		}
-		annotations[metadata.KumaVirtualProbesAnnotation] = metadata.AnnotationDisabled
-		return nil
-	}
-
-	if vpExist {
-		annotations[metadata.KumaVirtualProbesAnnotation] = str(vpEnabled)
-		return nil
-	}
-	annotations[metadata.KumaVirtualProbesAnnotation] = str(cfg.VirtualProbesEnabled)
 	return nil
 }
 

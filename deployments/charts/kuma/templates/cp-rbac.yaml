@@ -27,15 +27,32 @@ rules:
     resources:
       - namespaces
       - pods
+{{- if not (and .Values.transparentProxy.configMap.enabled .Values.transparentProxy.configMap.config) }}
       - configmaps
+{{- end }}
       - nodes
-  {{- if .Values.experimental.gatewayAPI }}
+{{- if .Values.controlPlane.supportGatewaySecretsInAllNamespaces }}
       - secrets
-  {{- end }}
+{{- end }}
     verbs:
       - get
       - list
       - watch
+  - apiGroups:
+    - ""
+    resources:
+      - secrets
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - "discovery.k8s.io"
+    resources:
+      - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
   - apiGroups:
       - "apps"
     resources:
@@ -105,6 +122,9 @@ rules:
       - ""
     resources:
       - services
+{{- if and .Values.transparentProxy.configMap.enabled .Values.transparentProxy.configMap.config }}
+      - configmaps
+{{- end }}
     verbs:
       - get
       - delete
@@ -113,6 +133,14 @@ rules:
       - create
       - update
       - patch
+  - apiGroups:
+    - "discovery.k8s.io"
+    resources:
+    - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
   - apiGroups:
       - kuma.io
     resources:
@@ -144,9 +172,7 @@ rules:
       - meshgateways
       - meshgatewayroutes
       - meshgatewayinstances
-  {{- if .Values.experimental.gatewayAPI }}
       - meshgatewayconfigs
-  {{- end }}
   {{- range $policy, $v := .Values.plugins.policies }}
   {{- if $v }}
       - {{ $policy }}

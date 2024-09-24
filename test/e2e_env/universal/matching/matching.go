@@ -27,17 +27,20 @@ func Matching() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
+	AfterEachFailure(func() {
+		DebugUniversal(universal.Cluster, mesh)
+	})
+
 	E2EAfterAll(func() {
 		Expect(universal.Cluster.DeleteMeshApps(mesh)).To(Succeed())
 		Expect(universal.Cluster.DeleteMesh(mesh)).To(Succeed())
 	})
 
-	// Added Flake because: https://github.com/kumahq/kuma/issues/4700
-	It("should both fault injections with the same destination proxy", FlakeAttempts(3), func() {
+	It("should both fault injections with the same destination proxy", func() {
 		Expect(YamlUniversal(fmt.Sprintf(`
 type: FaultInjection
 mesh: %s
-name: fi1
+name: matching-fi1
 sources:
    - match:
        kuma.io/service: demo-client-1
@@ -53,7 +56,7 @@ conf:
 		Expect(YamlUniversal(fmt.Sprintf(`
 type: FaultInjection
 mesh: %s
-name: fi2
+name: matching-fi2
 sources:
    - match:
        kuma.io/service: demo-client-2

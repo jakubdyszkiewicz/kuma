@@ -1,10 +1,10 @@
 package matchers
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 
 	common_api "github.com/kumahq/kuma/api/common/v1alpha1"
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
@@ -14,6 +14,7 @@ import (
 	core_xds "github.com/kumahq/kuma/pkg/core/xds"
 	core_rules "github.com/kumahq/kuma/pkg/plugins/policies/core/rules"
 	meshhttproute_api "github.com/kumahq/kuma/pkg/plugins/policies/meshhttproute/api/v1alpha1"
+	"github.com/kumahq/kuma/pkg/util/pointer"
 	xds_context "github.com/kumahq/kuma/pkg/xds/context"
 	xds_topology "github.com/kumahq/kuma/pkg/xds/topology"
 )
@@ -77,10 +78,10 @@ func MatchedPolicies(
 		}
 	}
 
-	sort.Sort(ByTargetRef(dpPolicies))
+	SortByTargetRef(dpPolicies)
 
 	for _, ps := range matchedPoliciesByInbound {
-		sort.Sort(ByTargetRef(ps))
+		SortByTargetRef(ps)
 	}
 
 	fr, err := core_rules.BuildFromRules(matchedPoliciesByInbound)
@@ -88,7 +89,7 @@ func MatchedPolicies(
 		warnings = append(warnings, fmt.Sprintf("couldn't create From rules: %s", err.Error()))
 	}
 
-	tr, err := core_rules.BuildToRules(dpPolicies, resources.ListOrEmpty(meshhttproute_api.MeshHTTPRouteType).GetItems())
+	tr, err := core_rules.BuildToRules(dpPolicies, resources)
 	if err != nil {
 		warnings = append(warnings, fmt.Sprintf("couldn't create To rules: %s", err.Error()))
 	}
@@ -96,7 +97,7 @@ func MatchedPolicies(
 	gr, err := core_rules.BuildGatewayRules(
 		matchedPoliciesByInbound,
 		matchedPoliciesByGatewayListener,
-		resources.ListOrEmpty(meshhttproute_api.MeshHTTPRouteType).GetItems(),
+		resources,
 	)
 	if err != nil {
 		warnings = append(warnings, fmt.Sprintf("couldn't create Gateway rules: %s", err.Error()))
@@ -127,6 +128,12 @@ func dppSelectedByPolicy(
 	gateway *core_mesh.MeshGatewayResource,
 	referencableResources xds_context.Resources,
 ) ([]core_rules.InboundListener, []core_rules.InboundListenerHostname, bool, error) {
+	if !dppSelectedByZone(meta, dpp) {
+		return []core_rules.InboundListener{}, nil, false, nil
+	}
+	if !dppSelectedByNamespace(meta, dpp) {
+		return []core_rules.InboundListener{}, nil, false, nil
+	}
 	switch ref.Kind {
 	case common_api.Mesh:
 		if isSupportedProxyType(ref.ProxyTypes, resolveDataplaneProxyType(dpp)) {
@@ -165,9 +172,41 @@ func dppSelectedByPolicy(
 		if mhr == nil {
 			return nil, nil, false, fmt.Errorf("couldn't resolve MeshHTTPRoute targetRef with name '%s'", ref.Name)
 		}
-		return dppSelectedByPolicy(mhr.Meta, mhr.Spec.TargetRef, dpp, gateway, referencableResources)
+		return dppSelectedByPolicy(mhr.Meta, pointer.DerefOr(mhr.Spec.TargetRef, common_api.TargetRef{Kind: common_api.Mesh}), dpp, gateway, referencableResources)
 	default:
 		return nil, nil, false, fmt.Errorf("unsupported targetRef kind '%s'", ref.Kind)
+	}
+}
+
+func dppSelectedByNamespace(meta core_model.ResourceMeta, dpp *core_mesh.DataplaneResource) bool {
+	switch meta.GetLabels()[mesh_proto.PolicyRoleLabel] {
+	case string(mesh_proto.ConsumerPolicyRole), string(mesh_proto.WorkloadOwnerPolicyRole):
+		ns, ok := meta.GetLabels()[mesh_proto.KubeNamespaceTag]
+		return ok && ns == dpp.GetMeta().GetLabels()[mesh_proto.KubeNamespaceTag]
+	default:
+		return true
+	}
+}
+
+func dppSelectedByZone(meta core_model.ResourceMeta, dpp *core_mesh.DataplaneResource) bool {
+	switch core_model.PolicyRole(meta) {
+	case mesh_proto.ProducerPolicyRole:
+		return true
+	default:
+		if dpp.GetMeta() == nil {
+			return true
+		}
+		// we should return true once dpp has no origin.
+		// Resource that cannot be created on zone(global one) doesn't have it
+		if _, ok := dpp.GetMeta().GetLabels()[mesh_proto.ResourceOriginLabel]; !ok {
+			return true
+		}
+		origin, ok := meta.GetLabels()[mesh_proto.ResourceOriginLabel]
+		if ok && origin == string(mesh_proto.ZoneResourceOrigin) {
+			zone, ok := meta.GetLabels()[string(mesh_proto.ZoneTag)]
+			return ok && dpp.GetMeta().GetLabels()[mesh_proto.ZoneTag] == zone
+		}
+		return true
 	}
 }
 
@@ -237,60 +276,35 @@ func inboundsSelectedByTags(tagsSelector mesh_proto.TagSelector, dpp *core_mesh.
 	return inbounds, gwListeners, delegatedGatewaySelected
 }
 
-type ByTargetRef []core_model.Resource
-
-func (b ByTargetRef) Len() int { return len(b) }
-
-func (b ByTargetRef) Less(i, j int) bool {
-	r1, ok1 := b[i].GetSpec().(core_model.Policy)
-	r2, ok2 := b[j].GetSpec().(core_model.Policy)
-	if !(ok1 && ok2) {
-		panic("resource doesn't support TargetRef matching")
-	}
-
-	tr1, tr2 := r1.GetTargetRef(), r2.GetTargetRef()
-
-	if tr1.Kind != tr2.Kind {
-		return tr1.Kind.Less(tr2.Kind)
-	}
-
-	o1, o2 := originToNumber(b[i]), originToNumber(b[j])
-	if o1 != o2 {
-		return o1 < o2
-	}
-
-	if tr1.Kind == common_api.MeshGateway {
-		if len(tr1.Tags) != len(tr2.Tags) {
-			return len(tr1.Tags) < len(tr2.Tags)
+func SortByTargetRef(rs []core_model.Resource) {
+	slices.SortFunc(rs, func(r1, r2 core_model.Resource) int {
+		p1, ok1 := r1.GetSpec().(core_model.Policy)
+		p2, ok2 := r2.GetSpec().(core_model.Policy)
+		if !(ok1 && ok2) {
+			panic("resource doesn't support TargetRef matching")
 		}
-	}
 
-	return core_model.GetDisplayName(b[i]) > core_model.GetDisplayName(b[j])
-}
+		tr1, tr2 := p1.GetTargetRef(), p2.GetTargetRef()
+		if less := tr1.Kind.Compare(tr2.Kind); less != 0 {
+			return less
+		}
 
-func (b ByTargetRef) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
+		o1, _ := core_model.ResourceOrigin(r1.GetMeta())
+		o2, _ := core_model.ResourceOrigin(r2.GetMeta())
+		if less := o1.Compare(o2); less != 0 {
+			return less
+		}
 
-// The logic of this method is to recreate the following comparison table:
+		if tr1.Kind == common_api.MeshGateway {
+			if less := len(tr1.Tags) - len(tr2.Tags); less != 0 {
+				return less
+			}
+		}
 
-// origin_1 | origin_2 | has_more_priority
-// ---------|----------|-------------
-// Global   | Zone     | origin_2
-// Global   | Unknown  | origin_2
-// Zone     | Global   | origin_1
-// Zone     | Unknown  | origin_1
-// Unknown  | Global   | origin_1
-// Unknown  | Zone     | origin_2
-//
-// If we assign numbers to origins like Global=-1, Zone=1, Unknown=0, then we can compare them as numbers
-// and get the same result as in the table above.
-func originToNumber(r core_model.Resource) int {
-	origin, _ := core_model.ResourceOrigin(r.GetMeta())
-	switch origin {
-	case mesh_proto.GlobalResourceOrigin:
-		return -1
-	case mesh_proto.ZoneResourceOrigin:
-		return 1
-	default:
-		return 0
-	}
+		if less := core_model.PolicyRole(r1.GetMeta()).Compare(core_model.PolicyRole(r2.GetMeta())); less != 0 {
+			return less
+		}
+
+		return cmp.Compare(core_model.GetDisplayName(r2.GetMeta()), core_model.GetDisplayName(r1.GetMeta()))
+	})
 }

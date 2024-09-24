@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"golang.org/x/exp/maps"
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/simple"
 	"gonum.org/v1/gonum/graph/topo"
@@ -16,6 +15,8 @@ import (
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
 	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/plugins/policies/meshhttproute/api/v1alpha1"
+	meshhttproute_api "github.com/kumahq/kuma/pkg/plugins/policies/meshhttproute/api/v1alpha1"
+	util_maps "github.com/kumahq/kuma/pkg/util/maps"
 	"github.com/kumahq/kuma/pkg/util/pointer"
 )
 
@@ -43,7 +44,8 @@ type FromRules struct {
 }
 
 type ToRules struct {
-	Rules Rules
+	Rules         Rules
+	ResourceRules ResourceRules
 }
 
 type InboundListenerHostname struct {
@@ -106,6 +108,8 @@ type SingleItemRules struct {
 type PolicyItemWithMeta struct {
 	core_model.PolicyItem
 	core_model.ResourceMeta
+	TopLevel  common_api.TargetRef
+	RuleIndex int
 }
 
 // Tag is a key-value pair. If Not is true then Key != Value
@@ -117,6 +121,14 @@ type Tag struct {
 
 // Subset represents a group of proxies
 type Subset []Tag
+
+func NewSubset(m map[string]string) Subset {
+	var s Subset
+	for _, k := range util_maps.SortedKeys(m) {
+		s = append(s, Tag{Key: k, Value: m[k]})
+	}
+	return s
+}
 
 // IsSubset returns true if 'other' is a subset of the current set.
 // Empty set is a superset for all subsets.
@@ -209,6 +221,12 @@ func MeshService(name string) Subset {
 	}}
 }
 
+func MeshExternalService(name string) Subset {
+	return Subset{{
+		Key: mesh_proto.ServiceTag, Value: name,
+	}}
+}
+
 func SubsetFromTags(tags map[string]string) Subset {
 	subset := Subset{}
 	for k, v := range tags {
@@ -244,6 +262,30 @@ type Rule struct {
 	Subset Subset
 	Conf   interface{}
 	Origin []core_model.ResourceMeta
+
+	// BackendRefOriginIndex is a mapping from the rule to the origin of the BackendRefs in the rule.
+	// Some policies have BackendRefs in their confs, and it's important to know what was the original policy
+	// that contributed the BackendRefs to the final conf. Rule (key) is represented as a hash from rule.Matches.
+	// Origin (value) is represented as an index in the Origin list. If policy doesn't have rules (i.e. MeshTCPRoute)
+	// then key is an empty string "".
+	BackendRefOriginIndex BackendRefOriginIndex
+}
+
+func (r *Rule) GetBackendRefOrigin(hash common_api.MatchesHash) (core_model.ResourceMeta, bool) {
+	if r == nil {
+		return nil, false
+	}
+	if r.BackendRefOriginIndex == nil {
+		return nil, false
+	}
+	index, ok := r.BackendRefOriginIndex[hash]
+	if !ok {
+		return nil, false
+	}
+	if index >= len(r.Origin) {
+		return nil, false
+	}
+	return r.Origin[index], true
 }
 
 type Rules []*Rule
@@ -276,7 +318,7 @@ func BuildFromRules(
 			if !ok {
 				return FromRules{}, nil
 			}
-			fromList = append(fromList, BuildPolicyItemsWithMeta(policyWithFrom.GetFromList(), p.GetMeta())...)
+			fromList = append(fromList, BuildPolicyItemsWithMeta(policyWithFrom.GetFromList(), p.GetMeta(), policyWithFrom.GetTargetRef())...)
 		}
 		rules, err := BuildRules(fromList)
 		if err != nil {
@@ -289,14 +331,15 @@ func BuildFromRules(
 	}, nil
 }
 
-func BuildToRules(matchedPolicies []core_model.Resource, httpRoutes []core_model.Resource) (ToRules, error) {
-	toList := []PolicyItemWithMeta{}
-	for _, mp := range matchedPolicies {
-		tl, err := buildToList(mp, httpRoutes)
-		if err != nil {
-			return ToRules{}, err
-		}
-		toList = append(toList, BuildPolicyItemsWithMeta(tl, mp.GetMeta())...)
+type ResourceReader interface {
+	Get(resourceType core_model.ResourceType, ri core_model.ResourceIdentifier) core_model.Resource
+	ListOrEmpty(resourceType core_model.ResourceType) core_model.ResourceList
+}
+
+func BuildToRules(matchedPolicies []core_model.Resource, reader ResourceReader) (ToRules, error) {
+	toList, err := BuildToList(matchedPolicies, reader)
+	if err != nil {
+		return ToRules{}, err
 	}
 
 	rules, err := BuildRules(toList)
@@ -304,25 +347,45 @@ func BuildToRules(matchedPolicies []core_model.Resource, httpRoutes []core_model
 		return ToRules{}, err
 	}
 
-	return ToRules{Rules: rules}, nil
+	resourceRules, err := BuildResourceRules(toList, reader)
+	if err != nil {
+		return ToRules{}, err
+	}
+
+	return ToRules{Rules: rules, ResourceRules: resourceRules}, nil
+}
+
+func BuildToList(matchedPolicies []core_model.Resource, reader ResourceReader) ([]PolicyItemWithMeta, error) {
+	toList := []PolicyItemWithMeta{}
+	for _, mp := range matchedPolicies {
+		tl, err := buildToList(mp, reader.ListOrEmpty(meshhttproute_api.MeshHTTPRouteType).GetItems())
+		if err != nil {
+			return nil, err
+		}
+		if len(tl) > 0 {
+			topLevel := mp.GetSpec().(core_model.PolicyWithToList).GetTargetRef()
+			toList = append(toList, BuildPolicyItemsWithMeta(tl, mp.GetMeta(), topLevel)...)
+		}
+	}
+	return toList, nil
 }
 
 func BuildGatewayRules(
 	matchedPoliciesByInbound map[InboundListener][]core_model.Resource,
 	matchedPoliciesByListener map[InboundListenerHostname][]core_model.Resource,
-	httpRoutes []core_model.Resource,
+	reader ResourceReader,
 ) (GatewayRules, error) {
 	toRulesByInbound := map[InboundListener]Rules{}
 	toRulesByListenerHostname := map[InboundListenerHostname]Rules{}
 	for listener, policies := range matchedPoliciesByListener {
-		toRules, err := BuildToRules(policies, httpRoutes)
+		toRules, err := BuildToRules(policies, reader)
 		if err != nil {
 			return GatewayRules{}, err
 		}
 		toRulesByListenerHostname[listener] = toRules.Rules
 	}
 	for inbound, policies := range matchedPoliciesByInbound {
-		toRules, err := BuildToRules(policies, httpRoutes)
+		toRules, err := BuildToRules(policies, reader)
 		if err != nil {
 			return GatewayRules{}, err
 		}
@@ -377,7 +440,7 @@ func buildToList(p core_model.Resource, httpRoutes []core_model.Resource) ([]cor
 					targetRef = common_api.TargetRef{
 						Kind: common_api.MeshSubset,
 						Tags: map[string]string{
-							RuleMatchesHashTag: matchesHash,
+							RuleMatchesHashTag: string(matchesHash),
 						},
 					}
 				default:
@@ -385,7 +448,7 @@ func buildToList(p core_model.Resource, httpRoutes []core_model.Resource) ([]cor
 						Kind: common_api.MeshServiceSubset,
 						Name: mhrRules.TargetRef.Name,
 						Tags: map[string]string{
-							RuleMatchesHashTag: matchesHash,
+							RuleMatchesHashTag: string(matchesHash),
 						},
 					}
 				}
@@ -413,12 +476,14 @@ func (a *artificialPolicyItem) GetDefault() interface{} {
 	return a.conf
 }
 
-func BuildPolicyItemsWithMeta(items []core_model.PolicyItem, meta core_model.ResourceMeta) []PolicyItemWithMeta {
+func BuildPolicyItemsWithMeta(items []core_model.PolicyItem, meta core_model.ResourceMeta, topLevel common_api.TargetRef) []PolicyItemWithMeta {
 	var result []PolicyItemWithMeta
-	for _, item := range items {
+	for i, item := range items {
 		result = append(result, PolicyItemWithMeta{
 			PolicyItem:   item,
 			ResourceMeta: meta,
+			TopLevel:     topLevel,
+			RuleIndex:    i,
 		})
 	}
 	return result
@@ -454,10 +519,19 @@ func BuildSingleItemRules(matchedPolicies []core_model.Resource) (SingleItemRule
 // See the detailed algorithm description in docs/madr/decisions/007-mesh-traffic-permission.md
 func BuildRules(list []PolicyItemWithMeta) (Rules, error) {
 	rules := Rules{}
+	oldKindsItems := []PolicyItemWithMeta{}
+	for _, item := range list {
+		if item.PolicyItem.GetTargetRef().Kind.IsOldKind() {
+			oldKindsItems = append(oldKindsItems, item)
+		}
+	}
+	if len(oldKindsItems) == 0 {
+		return rules, nil
+	}
 
 	// 1. Convert list of rules into the list of subsets
 	var subsets []Subset
-	for _, item := range list {
+	for _, item := range oldKindsItems {
 		ss, err := asSubset(item.GetTargetRef())
 		if err != nil {
 			return nil, err
@@ -517,32 +591,35 @@ func BuildRules(list []PolicyItemWithMeta) (Rules, error) {
 			}
 			// 5. For each combination determine a configuration
 			confs := []interface{}{}
-			distinctOrigins := map[core_model.ResourceKey]core_model.ResourceMeta{}
-			for i := 0; i < len(list); i++ {
-				item := list[i]
+			var relevant []PolicyItemWithMeta
+			for i := 0; i < len(oldKindsItems); i++ {
+				item := oldKindsItems[i]
 				itemSubset, err := asSubset(item.GetTargetRef())
 				if err != nil {
 					return nil, err
 				}
 				if itemSubset.IsSubset(ss) {
 					confs = append(confs, item.GetDefault())
-					distinctOrigins[core_model.MetaToResourceKey(item.ResourceMeta)] = item.ResourceMeta
+					relevant = append(relevant, item)
 				}
 			}
-			merged, err := MergeConfs(confs)
-			if err != nil {
-				return nil, err
-			}
-			if merged != nil {
-				origins := maps.Values(distinctOrigins)
-				sort.Slice(origins, func(i, j int) bool {
-					return origins[i].GetName() < origins[j].GetName()
-				})
+
+			if len(relevant) > 0 {
+				merged, err := MergeConfs(confs)
+				if err != nil {
+					return nil, err
+				}
+				ruleOrigins, originIndex := origins(relevant, false)
+				resourceMetas := make([]core_model.ResourceMeta, 0, len(ruleOrigins))
+				for _, o := range ruleOrigins {
+					resourceMetas = append(resourceMetas, o.Resource)
+				}
 				for _, mergedRule := range merged {
 					rules = append(rules, &Rule{
-						Subset: ss,
-						Conf:   mergedRule,
-						Origin: origins,
+						Subset:                ss,
+						Conf:                  mergedRule,
+						Origin:                resourceMetas,
+						BackendRefOriginIndex: originIndex,
 					})
 				}
 			}

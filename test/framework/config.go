@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/pkg/errors"
 
 	"github.com/kumahq/kuma/pkg/config"
@@ -50,7 +49,6 @@ type E2eConfig struct {
 	IPV6                              bool              `json:"ipv6,omitempty" envconfig:"IPV6"`
 	UseHostnameInsteadOfIP            bool              `json:"useHostnameInsteadOfIP,omitempty" envconfig:"KUMA_USE_HOSTNAME_INSTEAD_OF_ID"`
 	UseLoadBalancer                   bool              `json:"useLoadBalancer,omitempty" envconfig:"KUMA_USE_LOAD_BALANCER"`
-	CIDR                              string            `json:"kumaCidr,omitempty"`
 	DefaultClusterStartupRetries      int               `json:"defaultClusterStartupRetries,omitempty" envconfig:"KUMA_DEFAULT_RETRIES"`
 	DefaultClusterStartupTimeout      time.Duration     `json:"defaultClusterStartupTimeout,omitempty" envconfig:"KUMA_DEFAULT_TIMEOUT"`
 	KumactlBin                        string            `json:"kumactlBin,omitempty" envconfig:"KUMACTLBIN"`
@@ -63,11 +61,13 @@ type E2eConfig struct {
 	CleanupLogsOnSuccess              bool              `json:"cleanupLogsOnSuccess,omitempty" envconfig:"CLEANUP_LOGS_ON_SUCCESS"`
 	VersionsYamlPath                  string            `json:"versionsYamlPath,omitempty" envconfig:"VERSIONS_YAML_PATH"`
 	KumaExperimentalSidecarContainers bool              `json:"kumaSidecarContainers,omitempty" envconfig:"KUMA_EXPERIMENTAL_SIDECAR_CONTAINERS"`
+	Debug                             bool              `json:"debug" envconfig:"KUMA_DEBUG"`
+	DebugDir                          string            `json:"debugDir" envconfig:"KUMA_DEBUG_DIR"`
 
 	SuiteConfig SuiteConfig `json:"suites,omitempty"`
 }
 
-func (c E2eConfig) SupportedVersions() []*semver.Version {
+func (c E2eConfig) SupportedVersions() []versions.Version {
 	return versions.ParseFromFile(c.VersionsYamlPath)
 }
 
@@ -150,10 +150,6 @@ func (c E2eConfig) AutoConfigure() error {
 		}
 	}
 
-	if Config.IPV6 && Config.CIDR == "" {
-		Config.CIDR = "fd00:fd00::/64"
-	}
-
 	Config.Arch = runtime.GOARCH
 	Config.OS = runtime.GOOS
 
@@ -214,7 +210,7 @@ var defaultConf = E2eConfig{
 	KumaZoneK8sCtlFlags:  map[string]string{},
 	SuiteConfig: SuiteConfig{
 		Compatibility: CompatibilitySuiteConfig{
-			HelmVersion: "2.3.3",
+			HelmVersion: "2.6.10",
 		},
 	},
 	K8sType:                      KindK8sType,
@@ -261,6 +257,7 @@ var defaultConf = E2eConfig{
 	UniversalE2ELogsPath:              path.Join(os.TempDir(), "e2e"),
 	CleanupLogsOnSuccess:              false,
 	KumaExperimentalSidecarContainers: false,
+	DebugDir:                          path.Join(os.TempDir(), "e2e-debug"),
 }
 
 func init() {

@@ -14,12 +14,14 @@ import (
 	config_core "github.com/kumahq/kuma/pkg/config/core"
 	"github.com/kumahq/kuma/pkg/core"
 	config_manager "github.com/kumahq/kuma/pkg/core/config/manager"
+	hostnamegenerator_api "github.com/kumahq/kuma/pkg/core/resources/apis/hostnamegenerator/api/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 	"github.com/kumahq/kuma/pkg/core/resources/apis/system"
 	"github.com/kumahq/kuma/pkg/core/resources/manager"
 	"github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/core/resources/registry"
 	"github.com/kumahq/kuma/pkg/core/resources/store"
+	core_runtime "github.com/kumahq/kuma/pkg/core/runtime"
 	kds_context "github.com/kumahq/kuma/pkg/kds/context"
 	client_v2 "github.com/kumahq/kuma/pkg/kds/v2/client"
 	sync_store_v2 "github.com/kumahq/kuma/pkg/kds/v2/store"
@@ -28,18 +30,17 @@ import (
 	"github.com/kumahq/kuma/pkg/test/grpc"
 	"github.com/kumahq/kuma/pkg/test/kds/samples"
 	"github.com/kumahq/kuma/pkg/test/kds/setup"
-	"github.com/kumahq/kuma/pkg/test/runtime"
 )
 
 var _ = Describe("Zone Delta Sync", func() {
 	zoneName := "zone-1"
 
-	runtimeInfo := runtime.TestRuntimeInfo{InstanceId: "zone-inst", Mode: config_core.Zone}
+	runtimeInfo := core_runtime.NewRuntimeInfo("zone-inst", config_core.Zone)
 	newPolicySink := func(zoneName string, resourceSyncer sync_store_v2.ResourceSyncer, cs *grpc.MockDeltaClientStream, configs map[string]bool) client_v2.KDSSyncClient {
 		return client_v2.NewKDSSyncClient(
 			core.Log.WithName("kds-sink"),
 			registry.Global().ObjectTypes(model.HasKDSFlag(model.GlobalToZoneSelector)),
-			client_v2.NewDeltaKDSStream(cs, zoneName, &runtimeInfo, ""),
+			client_v2.NewDeltaKDSStream(cs, zoneName, runtimeInfo, ""),
 			sync_store_v2.ZoneSyncCallback(context.Background(), configs, resourceSyncer, false, zoneName, nil, "kuma-system"), 0,
 		)
 	}
@@ -203,12 +204,18 @@ var _ = Describe("Zone Delta Sync", func() {
 	})
 
 	It("should sync ingresses", func() {
+		labelFn := func(zoneName string) map[string]string {
+			return map[string]string{
+				mesh_proto.ZoneTag:             zoneName,
+				mesh_proto.ResourceOriginLabel: string(mesh_proto.ZoneResourceOrigin),
+			}
+		}
 		// create Ingress for current zone, shouldn't be synced
-		err := globalStore.Create(context.Background(), &mesh.ZoneIngressResource{Spec: ingressFunc(zoneName)}, store.CreateByKey("dp-1", model.NoMesh))
+		err := globalStore.Create(context.Background(), &mesh.ZoneIngressResource{Spec: ingressFunc(zoneName)}, store.CreateByKey("dp-1", model.NoMesh), store.CreateWithLabels(labelFn(zoneName)))
 		Expect(err).ToNot(HaveOccurred())
-		err = globalStore.Create(context.Background(), &mesh.ZoneIngressResource{Spec: ingressFunc("another-zone-1")}, store.CreateByKey("dp-2", model.NoMesh))
+		err = globalStore.Create(context.Background(), &mesh.ZoneIngressResource{Spec: ingressFunc("another-zone-1")}, store.CreateByKey("dp-2", model.NoMesh), store.CreateWithLabels(labelFn("another-zone-1")))
 		Expect(err).ToNot(HaveOccurred())
-		err = globalStore.Create(context.Background(), &mesh.ZoneIngressResource{Spec: ingressFunc("another-zone-2")}, store.CreateByKey("dp-3", model.NoMesh))
+		err = globalStore.Create(context.Background(), &mesh.ZoneIngressResource{Spec: ingressFunc("another-zone-2")}, store.CreateByKey("dp-3", model.NoMesh), store.CreateWithLabels(labelFn("another-zone-2")))
 		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func() int {
@@ -236,12 +243,13 @@ var _ = Describe("Zone Delta Sync", func() {
 			return !excludeTypes[descriptor.Name]
 		}))
 
-		// plus 4 global-scope types
+		// plus the global-scope types
 		extraTypes := []model.ResourceType{
 			mesh.MeshType,
 			mesh.ZoneIngressType,
 			system.ConfigType,
 			system.GlobalSecretType,
+			hostnamegenerator_api.HostnameGeneratorType,
 		}
 
 		actualConsumedTypes = append(actualConsumedTypes, extraTypes...)

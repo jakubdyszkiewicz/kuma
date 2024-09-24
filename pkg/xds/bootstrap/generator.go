@@ -79,16 +79,6 @@ func (b *bootstrapGenerator) Generate(ctx context.Context, request types.Bootstr
 	if err := b.validateRequest(request); err != nil {
 		return nil, kumaDpBootstrap, err
 	}
-	// TODO Backward compat for 2 versions after 2.4 prior to 2.4 these were not passed in the request https://github.com/kumahq/kuma/issues/7220
-	accessLogSocketPath := request.AccessLogSocketPath
-	if accessLogSocketPath == "" {
-		accessLogSocketPath = core_xds.AccessLogSocketName(os.TempDir(), request.Name, request.Mesh)
-	}
-	metricsSocketPath := request.MetricsResources.SocketPath
-
-	if metricsSocketPath == "" {
-		metricsSocketPath = core_xds.MetricsHijackerSocketName(os.TempDir(), request.Name, request.Mesh)
-	}
 
 	proxyId := core_xds.BuildProxyId(request.Mesh, request.Name)
 	params := configParameters{
@@ -114,17 +104,17 @@ func (b *bootstrapGenerator) Generate(ctx context.Context, request types.Bootstr
 				KumaDpCompatible: request.Version.Envoy.KumaDpCompatible,
 			},
 		},
-		DynamicMetadata:     request.DynamicMetadata,
-		DNSPort:             request.DNSPort,
-		EmptyDNSPort:        request.EmptyDNSPort,
-		ProxyType:           request.ProxyType,
-		Features:            request.Features,
-		Resources:           request.Resources,
-		Workdir:             request.Workdir,
-		AccessLogSocketPath: accessLogSocketPath,
-		MetricsSocketPath:   metricsSocketPath,
-		MetricsCertPath:     request.MetricsResources.CertPath,
-		MetricsKeyPath:      request.MetricsResources.KeyPath,
+		DynamicMetadata:      request.DynamicMetadata,
+		DNSPort:              request.DNSPort,
+		ReadinessPort:        request.ReadinessPort,
+		AppProbeProxyEnabled: request.AppProbeProxyEnabled,
+		ProxyType:            request.ProxyType,
+		Features:             request.Features,
+		Resources:            request.Resources,
+		Workdir:              request.Workdir,
+		MetricsCertPath:      request.MetricsResources.CertPath,
+		MetricsKeyPath:       request.MetricsResources.KeyPath,
+		SystemCaPath:         request.SystemCaPath,
 	}
 
 	setAdminPort := func(adminPortFromResource uint32) {
@@ -204,7 +194,7 @@ var NotCA = errors.New("A data plane proxy is trying to verify the control plane
 func SANMismatchErr(host string, sans []string) error {
 	return errors.Errorf("A data plane proxy is trying to connect to the control plane using %q address, but the certificate in the control plane has the following SANs %q. "+
 		"Either change the --cp-address in kuma-dp to one of those or execute the following steps:\n"+
-		"1) Generate a new certificate with the address you are trying to use. It is recommended to use trusted Certificate Authority, but you can also generate self-signed certificates using 'kumactl generate tls-certificate --type=server --cp-hostname=%s'\n"+
+		"1) Generate a new certificate with the address you are trying to use. It is recommended to use trusted Certificate Authority, but you can also generate self-signed certificates using 'kumactl generate tls-certificate --type=server --hostname=%s'\n"+
 		"2) Set KUMA_GENERAL_TLS_CERT_FILE and KUMA_GENERAL_TLS_KEY_FILE or the equivalent in Kuma CP config file to the new certificate.\n"+
 		"3) Restart the control plane to read the new certificate and start kuma-dp.", host, sans, host)
 }

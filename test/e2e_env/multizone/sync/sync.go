@@ -35,6 +35,13 @@ func Sync() {
 			Setup(multizone.UniZone1)
 		Expect(err).ToNot(HaveOccurred())
 	})
+
+	AfterEachFailure(func() {
+		DebugUniversal(multizone.Global, meshName)
+		DebugUniversal(multizone.UniZone1, meshName)
+		DebugKube(multizone.KubeZone1, meshName, namespace)
+	})
+
 	E2EAfterAll(func() {
 		Expect(multizone.KubeZone1.TriggerDeleteNamespace(namespace)).To(Succeed())
 		Expect(multizone.UniZone1.DeleteMeshApps(meshName)).To(Succeed())
@@ -45,7 +52,9 @@ func Sync() {
 		Eventually(func(g Gomega) {
 			out, err := multizone.Global.GetKumactlOptions().RunKumactlAndGetOutput("inspect", "zones")
 			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(strings.Count(out, "Online")).To(Equal(4))
+			// Some tests create their own Zones that may or may not
+			// be run simultaneously
+			g.Expect(strings.Count(out, "Online")).To(BeNumerically(">=", 4))
 		}, "30s", "1s").Should(Succeed())
 	})
 
@@ -74,7 +83,9 @@ func Sync() {
 			Eventually(func(g Gomega) {
 				out, err := multizone.Global.GetKumactlOptions().RunKumactlAndGetOutput("inspect", "zone-ingresses")
 				g.Expect(err).ToNot(HaveOccurred())
-				g.Expect(strings.Count(out, "Online")).To(Equal(4))
+				// Some tests create their own ZoneIngresses that may or may not
+				// be run simultaneously
+				g.Expect(strings.Count(out, "Online")).To(BeNumerically(">=", 4))
 			}, "30s", "1s").Should(Succeed())
 		})
 

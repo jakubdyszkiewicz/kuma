@@ -24,21 +24,20 @@ func DefaultKubernetesRuntimeConfig() *KubernetesRuntimeConfig {
 		ControlPlaneServiceName: "kuma-control-plane",
 		ServiceAccountName:      defaultServiceAccountName,
 		Injector: Injector{
-			CNIEnabled:           false,
-			VirtualProbesEnabled: true,
-			VirtualProbesPort:    9000,
+			CNIEnabled:                false,
+			VirtualProbesEnabled:      true,
+			VirtualProbesPort:         9000,
+			ApplicationProbeProxyPort: 9001,
 			SidecarContainer: SidecarContainer{
-				IpFamilyMode:          "dualstack",
-				RedirectPortInbound:   15006,
-				RedirectPortInboundV6: 15006,
-				RedirectPortOutbound:  15001,
+				IpFamilyMode:         "dualstack",
+				RedirectPortInbound:  15006,
+				RedirectPortOutbound: 15001,
 				DataplaneContainer: DataplaneContainer{
 					Image:     "kuma/kuma-dp:latest",
 					UID:       5678,
 					GID:       5678,
 					DrainTime: config_types.Duration{Duration: 30 * time.Second},
 					EnvVars:   map[string]string{},
-
 					ReadinessProbe: SidecarReadinessProbe{
 						InitialDelaySeconds: 1,
 						TimeoutSeconds:      3,
@@ -77,6 +76,8 @@ func DefaultKubernetesRuntimeConfig() *KubernetesRuntimeConfig {
 			SidecarTraffic: SidecarTraffic{
 				ExcludeInboundPorts:  []uint32{},
 				ExcludeOutboundPorts: []uint32{},
+				ExcludeInboundIPs:    []string{},
+				ExcludeOutboundIPs:   []string{},
 			},
 			Exceptions: Exceptions{
 				Labels: map[string]string{
@@ -99,7 +100,7 @@ func DefaultKubernetesRuntimeConfig() *KubernetesRuntimeConfig {
 			},
 			IgnoredServiceSelectorLabels: []string{},
 			// topology labels that are useful for, for example, MeshLoadBalancingStrategy policy.
-			NodeLabelsToCopy: []string{"topology.kubernetes.io/zone", "topology.kubernetes.io/region"},
+			NodeLabelsToCopy: []string{"topology.kubernetes.io/zone", "topology.kubernetes.io/region", "kubernetes.io/hostname"},
 		},
 		MarshalingCacheExpirationTime: config_types.Duration{Duration: 5 * time.Minute},
 		NodeTaintController: NodeTaintController{
@@ -153,6 +154,9 @@ type KubernetesRuntimeConfig struct {
 	// If this is set to true, deleting a Mesh will not delete resources that belong to that Mesh.
 	// This can be useful when resources are managed in Argo CD where creation/deletion is managed there.
 	SkipMeshOwnerReference bool `json:"skipMeshOwnerReference" envconfig:"kuma_runtime_kubernetes_skip_mesh_owner_reference"`
+	// If true, then control plane can support TLS secrets for builtin gateway outside of mesh system namespace.
+	// The downside is that control plane requires permission to read Secrets in all namespaces.
+	SupportGatewaySecretsInAllNamespaces bool `json:"supportGatewaySecretsInAllNamespaces" envconfig:"kuma_runtime_kubernetes_support_gateway_secrets_in_all_namespaces"`
 }
 
 type ControllersConcurrency struct {
@@ -206,13 +210,13 @@ type Injector struct {
 	ContainerPatches []string `json:"containerPatches" envconfig:"kuma_runtime_kubernetes_injector_container_patches"`
 	// CNIEnabled if true runs kuma-cp in CNI compatible mode
 	CNIEnabled bool `json:"cniEnabled" envconfig:"kuma_runtime_kubernetes_injector_cni_enabled"`
-	// VirtualProbesEnabled enables automatic converting HttpGet probes to virtual. Virtual probe
-	// serves on sub-path of insecure port 'virtualProbesPort',
-	// i.e :8080/health/readiness -> :9000/8080/health/readiness where 9000 is virtualProbesPort
+	// VirtualProbesEnabled enables automatic converting pod probes to virtual probes that is proxied by the sidecar.
 	VirtualProbesEnabled bool `json:"virtualProbesEnabled" envconfig:"kuma_runtime_kubernetes_virtual_probes_enabled"`
-	// VirtualProbesPort is a port for exposing virtual probes which are not secured by mTLS
+	// VirtualProbesPort is a port for exposing virtual probes which are not secured by mTLS.
 	VirtualProbesPort uint32 `json:"virtualProbesPort" envconfig:"kuma_runtime_kubernetes_virtual_probes_port"`
-	// SidecarTraffic is a configuration for a traffic that is intercepted by sidecar
+	// ApplicationProbeProxyPort is a port for proxying application probes, it is not secured by mTLS.
+	ApplicationProbeProxyPort uint32 `json:"applicationProbeProxyPort" envconfig:"kuma_runtime_kubernetes_application_probe_proxy_port"`
+	// SidecarTraffic is a configuration for traffic that is intercepted by sidecar
 	SidecarTraffic SidecarTraffic `json:"sidecarTraffic"`
 	// Exceptions defines list of exceptions for Kuma injection
 	Exceptions Exceptions `json:"exceptions"`
@@ -229,6 +233,10 @@ type Injector struct {
 	IgnoredServiceSelectorLabels []string `json:"ignoredServiceSelectorLabels" envconfig:"KUMA_RUNTIME_KUBERNETES_INJECTOR_IGNORED_SERVICE_SELECTOR_LABELS"`
 	// NodeLabelsToCopy defines a list of node labels that should be copied to the Pod.
 	NodeLabelsToCopy []string `json:"nodeLabelsToCopy" envconfig:"KUMA_RUNTIME_KUBERNETES_INJECTOR_NODE_LABELS_TO_COPY"`
+	// TransparentProxyConfigMapName is used to specify the name of the ConfigMap that contains transparent proxy
+	// configuration. If this value is left empty, the transparent proxy configuration will not be loaded from
+	// a ConfigMap. The actual value is expected to be provided via an environment variable
+	TransparentProxyConfigMapName string `json:"transparentProxyConfigMap" envconfig:"kuma_runtime_kubernetes_injector_transparent_proxy_configmap_name"`
 }
 
 // Exceptions defines list of exceptions for Kuma injection
@@ -244,6 +252,14 @@ type SidecarTraffic struct {
 	// List of outbound ports that will be excluded from interception.
 	// This setting is applied on every pod unless traffic.kuma.io/exclude-outbound-ports annotation is specified on Pod.
 	ExcludeOutboundPorts []uint32 `json:"excludeOutboundPorts" envconfig:"kuma_runtime_kubernetes_sidecar_traffic_exclude_outbound_ports"`
+	// List of inbound IP addresses that will be excluded from interception.
+	// This setting is applied on every pod unless traffic.kuma.io/exclude-inbound-ips annotation is specified on the Pod.
+	// IP addresses can be specified with or without CIDR notation, and multiple addresses can be separated by commas.
+	ExcludeInboundIPs []string `json:"excludeInboundIPs" envconfig:"kuma_runtime_kubernetes_sidecar_traffic_exclude_inbound_ips"`
+	// List of outbound IP addresses that will be excluded from interception.
+	// This setting is applied on every pod unless traffic.kuma.io/exclude-outbound-ips annotation is specified on the Pod.
+	// IP addresses can be specified with or without CIDR notation, and multiple addresses can be separated by commas.
+	ExcludeOutboundIPs []string `json:"excludeOutboundIPs" envconfig:"kuma_runtime_kubernetes_sidecar_traffic_exclude_outbound_ips"`
 }
 
 // DataplaneContainer defines the configuration of a Kuma dataplane proxy container.
@@ -275,9 +291,6 @@ type SidecarContainer struct {
 	DataplaneContainer `json:",inline"`
 	// Redirect port for inbound traffic.
 	RedirectPortInbound uint32 `json:"redirectPortInbound,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_redirect_port_inbound"`
-	// Redirect port for inbound IPv6 traffic.
-	// Deprecated: Use RedirectPortInbound or IpFamilyMode instead.
-	RedirectPortInboundV6 uint32 `json:"redirectPortInboundV6,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_redirect_port_inbound_v6"`
 	// The IP family mode to enable traffic redirection for. Can be "ipv4" or "dualstack".
 	IpFamilyMode string `json:"ipFamilyMode,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_ip_family_mode"`
 	// Redirect port for outbound traffic.
@@ -502,9 +515,6 @@ func (c *SidecarContainer) Validate() error {
 	}
 	if 65535 < c.RedirectPortInbound {
 		errs = multierr.Append(errs, errors.Errorf(".RedirectPortInbound must be in the range [0, 65535]"))
-	}
-	if 0 != c.RedirectPortInboundV6 && 65535 < c.RedirectPortInboundV6 {
-		errs = multierr.Append(errs, errors.Errorf(".RedirectPortInboundV6 must be in the range [0, 65535]"))
 	}
 	if 65535 < c.RedirectPortOutbound {
 		errs = multierr.Append(errs, errors.Errorf(".RedirectPortOutbound must be in the range [0, 65535]"))

@@ -15,13 +15,13 @@ import (
 )
 
 func GenerateCDS(
-	destinationsPerService map[string][]envoy_tags.Tags,
+	meshDestinations MeshDestinations,
 	services envoy_common.Services,
 	apiVersion core_xds.APIVersion,
 	meshName string,
 	origin string,
 ) ([]*core_xds.Resource, error) {
-	matchAllDestinations := destinationsPerService[mesh_proto.MatchAllTag]
+	matchAllDestinations := meshDestinations.KumaIoServices[mesh_proto.MatchAllTag]
 
 	var resources []*core_xds.Resource
 	for _, service := range services.Sorted() {
@@ -36,8 +36,10 @@ func GenerateCDS(
 		tagKeySlice := tagSlice.ToTagKeysSlice().Transform(
 			envoy_tags.Without(mesh_proto.ServiceTag),
 		)
-
 		clusterName := envoy_names.GetMeshClusterName(meshName, service)
+		if clusters.BackendRef().ReferencesRealResource() {
+			clusterName = service
+		}
 		edsCluster, err := envoy_clusters.NewClusterBuilder(apiVersion, clusterName).
 			Configure(envoy_clusters.EdsCluster()).
 			Configure(envoy_clusters.LbSubset(tagKeySlice)).
@@ -66,9 +68,12 @@ func GenerateEDS(
 	var resources []*core_xds.Resource
 
 	for _, service := range services.Sorted() {
+		clusters := services[service]
 		endpoints := endpointMap[service]
-
 		clusterName := envoy_names.GetMeshClusterName(meshName, service)
+		if clusters.BackendRef().ReferencesRealResource() {
+			clusterName = service
+		}
 		cla, err := envoy_endpoints.CreateClusterLoadAssignment(clusterName, endpoints, apiVersion)
 		if err != nil {
 			return nil, err
@@ -96,7 +101,7 @@ func AddFilterChains(
 	availableServices []*mesh_proto.ZoneIngress_AvailableService,
 	apiVersion core_xds.APIVersion,
 	listenerBuilder *envoy_listeners.ListenerBuilder,
-	destinationsPerService map[string][]envoy_tags.Tags,
+	meshDestinations MeshDestinations,
 	endpointMap core_xds.EndpointMap,
 ) envoy_common.Services {
 	servicesAcc := envoy_common.NewServicesAccumulator(nil)
@@ -104,8 +109,8 @@ func AddFilterChains(
 	sniUsed := map[string]struct{}{}
 	for _, service := range availableServices {
 		serviceName := service.Tags[mesh_proto.ServiceTag]
-		destinations := destinationsPerService[serviceName]
-		destinations = append(destinations, destinationsPerService[mesh_proto.MatchAllTag]...)
+		destinations := meshDestinations.KumaIoServices[serviceName]
+		destinations = append(destinations, meshDestinations.KumaIoServices[mesh_proto.MatchAllTag]...)
 		clusterName := envoy_names.GetMeshClusterName(service.Mesh, serviceName)
 		serviceEndpoints := endpointMap[serviceName]
 
@@ -170,6 +175,39 @@ func AddFilterChains(
 
 			servicesAcc.Add(cluster)
 		}
+	}
+
+	for _, refDest := range meshDestinations.BackendRefs {
+		if _, ok := sniUsed[refDest.SNI]; ok {
+			continue
+		}
+		sniUsed[refDest.SNI] = struct{}{}
+
+		// todo(jakubdyszkiewicz) support splits
+		relevantTags := envoy_tags.Tags{}
+
+		// Destination name usually equals to kuma.io/service so we will add already existing cluster which will be
+		// then deduplicated in later steps
+		cluster := envoy_common.NewCluster(
+			envoy_common.WithName(refDest.DestinationName),
+			envoy_common.WithService(refDest.DestinationName),
+			envoy_common.WithTags(relevantTags),
+		)
+		cluster.SetMesh(refDest.Mesh)
+
+		filterChain := envoy_listeners.FilterChain(
+			envoy_listeners.NewFilterChainBuilder(apiVersion, envoy_common.AnonymousResource).Configure(
+				envoy_listeners.MatchTransportProtocol("tls"),
+				envoy_listeners.MatchServerNames(refDest.SNI),
+				envoy_listeners.TcpProxyDeprecatedWithMetadata(
+					refDest.DestinationName,
+					cluster,
+				),
+			),
+		)
+
+		listenerBuilder.Configure(filterChain)
+		servicesAcc.AddBackendRef(refDest.Resource, cluster)
 	}
 
 	return servicesAcc.Services()

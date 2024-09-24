@@ -14,6 +14,7 @@ import (
 	"github.com/emicklei/go-restful/v3"
 	"k8s.io/apimachinery/pkg/util/validation"
 
+	common_api "github.com/kumahq/kuma/api/common/v1alpha1"
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
 	api_types "github.com/kumahq/kuma/api/openapi/types"
 	api_common "github.com/kumahq/kuma/api/openapi/types/common"
@@ -27,11 +28,12 @@ import (
 	"github.com/kumahq/kuma/pkg/core/resources/apis/system"
 	"github.com/kumahq/kuma/pkg/core/resources/manager"
 	"github.com/kumahq/kuma/pkg/core/resources/model"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
 	"github.com/kumahq/kuma/pkg/core/resources/model/rest"
-	rest_v1alpha1 "github.com/kumahq/kuma/pkg/core/resources/model/rest/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core/resources/registry"
 	"github.com/kumahq/kuma/pkg/core/resources/store"
 	rest_errors "github.com/kumahq/kuma/pkg/core/rest/errors"
+	"github.com/kumahq/kuma/pkg/core/rest/errors/types"
 	"github.com/kumahq/kuma/pkg/core/user"
 	"github.com/kumahq/kuma/pkg/core/validators"
 	core_xds "github.com/kumahq/kuma/pkg/core/xds"
@@ -67,6 +69,8 @@ type resourceEndpoints struct {
 	filter             func(request *restful.Request) (store.ListFilterFunc, error)
 	meshContextBuilder xds_context.MeshContextBuilder
 	xdsHooks           []xds_hooks.ResourceSetHook
+	systemNamespace    string
+	isK8s              bool
 
 	disableOriginLabelValidation bool
 }
@@ -123,9 +127,10 @@ func (r *resourceEndpoints) addFindEndpoint(ws *restful.WebService, pathPrefix s
 			Returns(200, "OK", nil).
 			Returns(404, "Not found", nil))
 		if r.mode == config_core.Global {
-			ws.Route(ws.GET(pathPrefix+"/{name}/_config").To(r.methodNotAllowed("")).
-				Doc("Not allowed on Global CP.").
-				Returns(http.StatusMethodNotAllowed, "Not allowed on Global CP.", restful.ServiceError{}))
+			msg := "Not allowed on global CP"
+			ws.Route(ws.GET(pathPrefix+"/{name}/_config").To(r.methodNotAllowed(msg)).
+				Doc(msg).
+				Returns(http.StatusMethodNotAllowed, msg, restful.ServiceError{}))
 		} else {
 			ws.Route(ws.GET(pathPrefix+"/{name}/_config").To(r.configForProxy()).
 				Doc(fmt.Sprintf("Get proxy config%s", r.descriptor.Name)).
@@ -136,9 +141,14 @@ func (r *resourceEndpoints) addFindEndpoint(ws *restful.WebService, pathPrefix s
 	}
 }
 
-func (r *resourceEndpoints) methodNotAllowed(title string) func(request *restful.Request, response *restful.Response) {
+func (r *resourceEndpoints) methodNotAllowed(detail string) func(request *restful.Request, response *restful.Response) {
 	return func(request *restful.Request, response *restful.Response) {
-		rest_errors.HandleError(request.Request.Context(), response, &rest_errors.MethodNotAllowed{}, title)
+		err := &types.Error{
+			Status: 405,
+			Title:  "Method not allowed",
+			Detail: detail,
+		}
+		rest_errors.HandleError(request.Request.Context(), response, err, "")
 	}
 }
 
@@ -352,7 +362,7 @@ func (r *resourceEndpoints) createOrUpdateResource(request *restful.Request, res
 		rest_errors.HandleError(request.Request.Context(), response, err, "Could not find a resource")
 	}
 
-	if err := r.validateResourceRequest(name, meshName, resourceRest.GetMeta(), create); err != nil {
+	if err := r.validateResourceRequest(name, meshName, resourceRest, create); err != nil {
 		rest_errors.HandleError(request.Request.Context(), response, err, "Could not process a resource")
 		return
 	}
@@ -382,18 +392,27 @@ func (r *resourceEndpoints) createResource(
 		return
 	}
 
-	labels := resRest.GetMeta().GetLabels()
-	if r.mode == config_core.Zone {
-		if labels == nil {
-			labels = map[string]string{}
-		}
-		labels[mesh_proto.ResourceOriginLabel] = string(mesh_proto.ZoneResourceOrigin)
-	}
-
 	res := r.descriptor.NewObject()
 	_ = res.SetSpec(resRest.GetSpec())
+	res.SetMeta(resRest.GetMeta())
 	if r.descriptor.HasStatus {
 		_ = res.SetStatus(resRest.GetStatus())
+	}
+
+	labels, err := model.ComputeLabels(
+		res.Descriptor(),
+		res.GetSpec(),
+		res.GetMeta().GetLabels(),
+		res.GetMeta().GetNameExtensions(),
+		meshName,
+		r.mode,
+		r.isK8s,
+		r.systemNamespace,
+		r.zoneName,
+	)
+	if err != nil {
+		rest_errors.HandleError(ctx, response, err, "Could not compute labels for a resource")
+		return
 	}
 
 	if err := r.resManager.Create(ctx, res, store.CreateByKey(name, meshName), store.CreateWithLabels(labels)); err != nil {
@@ -491,39 +510,39 @@ func (r *resourceEndpoints) deleteResource(request *restful.Request, response *r
 	}
 }
 
-func (r *resourceEndpoints) validateResourceRequest(name string, meshName string, resourceMeta rest_v1alpha1.ResourceMeta, create bool) error {
+func (r *resourceEndpoints) validateResourceRequest(name string, meshName string, resource rest.Resource, create bool) error {
 	var err validators.ValidationError
-	if name != resourceMeta.Name {
+	if name != resource.GetMeta().Name {
 		err.AddViolation("name", "name from the URL has to be the same as in body")
 	}
 	if r.federatedZone && !r.doesNameLengthFitsGlobal(name) {
 		err.AddViolation("name", "the length of the name must be shorter")
 	}
-	if string(r.descriptor.Name) != resourceMeta.Type {
+	if string(r.descriptor.Name) != resource.GetMeta().Type {
 		err.AddViolation("type", "type from the URL has to be the same as in body")
 	}
-	if r.descriptor.Scope == model.ScopeMesh && meshName != resourceMeta.Mesh {
+	if r.descriptor.Scope == model.ScopeMesh && meshName != resource.GetMeta().Mesh {
 		err.AddViolation("mesh", "mesh from the URL has to be the same as in body")
 	}
 
-	err.AddError("labels", r.validateLabels(resourceMeta))
+	err.AddError("labels", r.validateLabels(resource))
 
 	if create {
-		err.AddError("", core_mesh.ValidateMeta(resourceMeta, r.descriptor.Scope))
+		err.AddError("", core_mesh.ValidateMeta(resource.GetMeta(), r.descriptor.Scope))
 	} else {
-		if verr, msg := core_mesh.ValidateMetaBackwardsCompatible(resourceMeta, r.descriptor.Scope); verr.HasViolations() {
+		if verr, msg := core_mesh.ValidateMetaBackwardsCompatible(resource.GetMeta(), r.descriptor.Scope); verr.HasViolations() {
 			err.AddError("", verr)
 		} else if msg != "" {
-			log.Info(msg, "type", r.descriptor.Name, "mesh", resourceMeta.Mesh, "name", resourceMeta.Name)
+			log.Info(msg, "type", r.descriptor.Name, "mesh", resource.GetMeta().Mesh, "name", resource.GetMeta().Name)
 		}
 	}
 	return err.OrNil()
 }
 
-func (r *resourceEndpoints) validateLabels(rm model.ResourceMeta) validators.ValidationError {
+func (r *resourceEndpoints) validateLabels(resource rest.Resource) validators.ValidationError {
 	var err validators.ValidationError
 
-	origin, ok := model.ResourceOrigin(rm)
+	origin, ok := model.ResourceOrigin(resource.GetMeta())
 	if ok {
 		if oerr := origin.IsValid(); oerr != nil {
 			err.AddViolationAt(validators.Root().Key(mesh_proto.ResourceOriginLabel), oerr.Error())
@@ -536,13 +555,39 @@ func (r *resourceEndpoints) validateLabels(rm model.ResourceMeta) validators.Val
 		}
 	}
 
-	for _, k := range maps.SortedKeys(rm.GetLabels()) {
+	if r.mode != config_core.Global {
+		if origin != mesh_proto.GlobalResourceOrigin {
+			zoneTag, ok := resource.GetMeta().GetLabels()[mesh_proto.ZoneTag]
+			if ok && zoneTag != r.zoneName {
+				err.AddViolationAt(validators.Root().Key(mesh_proto.ZoneTag), fmt.Sprintf("%s label should have %s value", mesh_proto.ZoneTag, r.zoneName))
+			}
+			if meshLabelValue, ok := resource.GetMeta().GetLabels()[mesh_proto.MeshTag]; ok && meshLabelValue != resource.GetMeta().GetMesh() {
+				err.AddViolationAt(validators.Root().Key(mesh_proto.MeshTag), fmt.Sprintf("%s label must not differ from mesh set on resource", mesh_proto.MeshTag))
+			}
+		}
+	}
+
+	if r.descriptor.IsPluginOriginated && r.descriptor.IsPolicy {
+		r.validatePolicyRole(resource)
+	}
+
+	for _, k := range maps.SortedKeys(resource.GetMeta().GetLabels()) {
 		for _, msg := range validation.IsQualifiedName(k) {
 			err.AddViolationAt(validators.Root().Key(k), msg)
 		}
-		for _, msg := range validation.IsValidLabelValue(rm.GetLabels()[k]) {
+		for _, msg := range validation.IsValidLabelValue(resource.GetMeta().GetLabels()[k]) {
 			err.AddViolationAt(validators.Root().Key(k), msg)
 		}
+	}
+	return err
+}
+
+func (r *resourceEndpoints) validatePolicyRole(resource rest.Resource) validators.ValidationError {
+	var err validators.ValidationError
+	policyRole := core_model.PolicyRole(resource.GetMeta())
+	// at the moment on universal all policies have system policy role
+	if policyRole != mesh_proto.SystemPolicyRole {
+		err.AddViolationAt(validators.Root().Key(mesh_proto.PolicyRoleLabel), fmt.Sprintf("%s label should have %s value, got %s", mesh_proto.PolicyRoleLabel, mesh_proto.SystemPolicyRole, policyRole))
 	}
 	return err
 }
@@ -726,7 +771,7 @@ func (r *resourceEndpoints) configForProxy() restful.RouteFunction {
 				rest_errors.HandleError(ctx, response, err, "Failed to inspect current proxy config")
 				return
 			}
-			diff, err := inspect.Diff(config, currentConfig)
+			diff, err := inspect.Diff(currentConfig, config)
 			if err != nil {
 				rest_errors.HandleError(ctx, response, err, "Failed to compute diff")
 				return
@@ -828,7 +873,7 @@ func (r *resourceEndpoints) rulesForResource() restful.RouteFunction {
 			CrossMeshResources: map[core_xds.MeshName]xds_context.ResourceMap{},
 			MeshLocalResources: baseMeshContext.ResourceMap,
 		}
-		matchesByHash := map[string][]meshhttproute_api.Match{}
+		matchesByHash := map[common_api.MatchesHash][]meshhttproute_api.Match{}
 		// Get all the matching policies
 		allPlugins := core_plugins.Plugins().PolicyPlugins(ordered.Policies)
 		rules := []api_common.InspectRule{}
@@ -896,8 +941,20 @@ func (r *resourceEndpoints) rulesForResource() restful.RouteFunction {
 					})
 				}
 			}
+			toResourceRules := []api_common.ResourceRule{}
+			for itemIdentifier, resourceRuleItem := range res.ToRules.ResourceRules {
+				toResourceRules = append(toResourceRules, api_common.ResourceRule{
+					Conf:                resourceRuleItem.Conf,
+					Origin:              oapi_helpers.OriginListToResourceRuleOrigin(res.Type, resourceRuleItem.Origin),
+					ResourceMeta:        oapi_helpers.ResourceMetaToMeta(itemIdentifier.ResourceType, resourceRuleItem.Resource),
+					ResourceSectionName: &resourceRuleItem.ResourceSectionName,
+				})
+			}
+			sort.Slice(toResourceRules, func(i, j int) bool {
+				return toResourceRules[i].ResourceMeta.Name < toResourceRules[j].ResourceMeta.Name
+			})
 
-			if proxyRule == nil && len(fromRules) == 0 && len(toRules) == 0 {
+			if proxyRule == nil && len(fromRules) == 0 && len(toRules) == 0 && len(toResourceRules) == 0 {
 				// No matches for this policy, keep going...
 				continue
 			}
@@ -906,18 +963,19 @@ func (r *resourceEndpoints) rulesForResource() restful.RouteFunction {
 				warnings = []string{}
 			}
 			rules = append(rules, api_common.InspectRule{
-				Type:      string(res.Type),
-				ToRules:   &toRules,
-				FromRules: &fromRules,
-				ProxyRule: proxyRule,
-				Warnings:  &warnings,
+				Type:            string(res.Type),
+				ToRules:         &toRules,
+				ToResourceRules: &toResourceRules,
+				FromRules:       &fromRules,
+				ProxyRule:       proxyRule,
+				Warnings:        &warnings,
 			})
 		}
 		httpMatches := []api_common.HttpMatch{}
 		for k, v := range matchesByHash {
 			httpMatches = append(httpMatches, api_common.HttpMatch{
 				Match: v,
-				Hash:  k,
+				Hash:  string(k),
 			})
 		}
 		sort.Slice(httpMatches, func(i, j int) bool {

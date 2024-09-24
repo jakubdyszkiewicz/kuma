@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/gruntwork-io/terratest/modules/k8s"
@@ -45,6 +46,7 @@ type UniversalCluster struct {
 	apps           map[string]*UniversalApp
 	verbose        bool
 	deployments    map[string]Deployment
+	dataplanes     []string
 	defaultTimeout time.Duration
 	defaultRetries int
 	opts           kumaDeploymentOptions
@@ -119,6 +121,13 @@ func (c *UniversalCluster) DeployKuma(mode core.CpMode, opt ...KumaDeploymentOpt
 
 	env := map[string]string{"KUMA_MODE": mode, "KUMA_DNS_SERVER_PORT": "53"}
 
+	if Config.IPV6 {
+		env["KUMA_DNS_SERVER_CIDR"] = "fd00:fd00::/64"
+		env["KUMA_IPAM_MESH_SERVICE_CIDR"] = "fd00:fd01::/64"
+		env["KUMA_IPAM_MESH_EXTERNAL_SERVICE_CIDR"] = "fd00:fd02::/64"
+		env["KUMA_IPAM_MESH_MULTI_ZONE_SERVICE_CIDR"] = "fd00:fd03::/64"
+	}
+
 	for k, v := range c.opts.env {
 		env[k] = v
 	}
@@ -131,10 +140,6 @@ func (c *UniversalCluster) DeployKuma(mode core.CpMode, opt ...KumaDeploymentOpt
 
 	if Config.XDSApiVersion != "" {
 		env["KUMA_BOOTSTRAP_SERVER_API_VERSION"] = Config.XDSApiVersion
-	}
-
-	if Config.CIDR != "" {
-		env["KUMA_DNS_SERVER_CIDR"] = Config.CIDR
 	}
 
 	var dockerVolumes []string
@@ -151,6 +156,9 @@ func (c *UniversalCluster) DeployKuma(mode core.CpMode, opt ...KumaDeploymentOpt
 	}
 
 	cmd := []string{"kuma-cp", "run", "--config-file", "/kuma/kuma-cp.conf"}
+	if Config.Debug {
+		cmd = append(cmd, "--log-level", "debug")
+	}
 	if mode == core.Zone {
 		env["KUMA_MULTIZONE_ZONE_NAME"] = c.ZoneName()
 		env["KUMA_MULTIZONE_ZONE_KDS_TLS_SKIP_VERIFY"] = "true"
@@ -212,7 +220,7 @@ func (c *UniversalCluster) GetKuma() ControlPlane {
 }
 
 func (c *UniversalCluster) GetKumaCPLogs() (string, error) {
-	return c.apps[AppModeCP].mainApp.Out(), nil
+	return "stdout:\n" + c.apps[AppModeCP].mainApp.Out() + "\nstderr:\n" + c.apps[AppModeCP].mainApp.Err(), nil
 }
 
 func (c *UniversalCluster) VerifyKuma() error {
@@ -247,13 +255,14 @@ func (c *UniversalCluster) CreateDP(app *UniversalApp, name, mesh, ip, dpyaml, t
 	cpIp := c.controlplane.Networking().IP
 	cpAddress := "https://" + net.JoinHostPort(cpIp, "5678")
 	app.CreateDP(token, cpAddress, name, mesh, ip, dpyaml, builtindns, "", concurrency, app.dpEnv)
+	c.dataplanes = append(c.dataplanes, name)
 	return app.dpApp.Start()
 }
 
 func (c *UniversalCluster) CreateZoneIngress(app *UniversalApp, name, ip, dpyaml, token string, builtindns bool) error {
 	app.CreateDP(token, c.controlplane.Networking().BootstrapAddress(), name, "", ip, dpyaml, builtindns, "ingress", 0, app.dpEnv)
 
-	if err := c.addIngressEnvoyTunnel(); err != nil {
+	if err := c.addIngressEnvoyTunnel(name); err != nil {
 		return err
 	}
 
@@ -389,6 +398,10 @@ func (c *UniversalCluster) GetApp(appName string) *UniversalApp {
 	return c.apps[appName]
 }
 
+func (c *UniversalCluster) GetDataplanes() []string {
+	return c.dataplanes
+}
+
 func (c *UniversalCluster) DeleteApp(appname string) error {
 	app, ok := c.apps[appname]
 	if !ok {
@@ -398,6 +411,9 @@ func (c *UniversalCluster) DeleteApp(appname string) error {
 		return err
 	}
 	delete(c.apps, appname)
+	c.dataplanes = slices.DeleteFunc(c.dataplanes, func(s string) bool {
+		return s == appname
+	})
 	return nil
 }
 
@@ -489,8 +505,8 @@ func (c *UniversalCluster) addEgressEnvoyTunnel() error {
 	return nil
 }
 
-func (c *UniversalCluster) addIngressEnvoyTunnel() error {
-	app := c.apps[AppIngress]
+func (c *UniversalCluster) addIngressEnvoyTunnel(appName string) error {
+	app := c.apps[appName]
 	c.networking[Config.ZoneIngressApp] = UniversalNetworking{
 		IP:            "localhost",
 		ApiServerPort: app.GetPublicPort(sshPort),

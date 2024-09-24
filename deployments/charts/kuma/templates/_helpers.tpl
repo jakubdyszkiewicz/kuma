@@ -151,6 +151,32 @@ app: {{ include "kuma.name" . }}-cni
 {{- end }}
 
 {{/*
+params: { dns: { policy?, config: {nameservers?, searches?}} }
+returns: formatted dnsConfig
+*/}}
+{{- define "kuma.dnsConfig" -}}
+{{- $dns := .dns }}
+{{- if $dns.policy }}
+dnsPolicy: {{ $dns.policy }}
+{{- end }}
+{{- if or (gt (len $dns.config.nameservers) 0) (gt (len $dns.config.searches) 0) }}
+dnsConfig:
+  {{- if gt (len $dns.config.nameservers) 0 }}
+  nameservers:
+    {{- range $nameserver := $dns.config.nameservers }}
+    - {{ $nameserver }}
+    {{- end }}
+  {{- end }}
+  {{- if gt (len $dns.config.searches) 0 }}
+  searches:
+    {{- range $search := $dns.config.searches }}
+    - {{ $search }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
 params: { image: { registry?, repository, tag? }, root: $ }
 returns: formatted image string
 */}}
@@ -194,6 +220,14 @@ returns: formatted image string
 {{ join "," $list }}
 {{- end -}}
 
+{{- define "kuma.transparentProxyConfigMapName" -}}
+{{- if .Values.transparentProxy.configMap.name }}
+{{- .Values.transparentProxy.configMap.name | trunc 253 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-transparent-proxy-config" .Chart.Name }}
+{{- end }}
+{{- end }}
+
 {{- define "kuma.defaultEnv" -}}
 env:
 {{ include "kuma.parentEnv" . }}
@@ -231,6 +265,10 @@ env:
 - name: KUMA_RUNTIME_KUBERNETES_INJECTOR_BUILTIN_DNS_LOGGING
   value: "true"
 {{- end }}
+{{- if and .Values.transparentProxy.configMap.enabled .Values.transparentProxy.configMap.config }}
+- name: KUMA_RUNTIME_KUBERNETES_INJECTOR_TRANSPARENT_PROXY_CONFIGMAP_NAME
+  value: {{ include "kuma.transparentProxyConfigMapName" . | quote }}
+{{- end }}
 - name: KUMA_RUNTIME_KUBERNETES_INJECTOR_CA_CERT_FILE
   value: /var/run/secrets/kuma.io/tls-cert/ca.crt
 - name: KUMA_DEFAULTS_SKIP_MESH_CREATION
@@ -263,12 +301,8 @@ env:
 {{- end }}
 - name: KUMA_API_SERVER_AUTHN_LOCALHOST_IS_ADMIN
   value: "false"
-- name: KUMA_RUNTIME_KUBERNETES_SERVICE_ACCOUNT_NAME
+- name: KUMA_RUNTIME_KUBERNETES_ALLOWED_USERS
   value: "system:serviceaccount:{{ .Release.Namespace }}:{{ include "kuma.name" . }}-control-plane"
-{{- if .Values.experimental.gatewayAPI }}
-- name: KUMA_EXPERIMENTAL_GATEWAY_API
-  value: "true"
-{{- end }}
 {{- if .Values.experimental.sidecarContainers }}
 - name: KUMA_EXPERIMENTAL_SIDECAR_CONTAINERS
   value: "true"
@@ -278,6 +312,8 @@ env:
   value: "true"
 - name: KUMA_RUNTIME_KUBERNETES_NODE_TAINT_CONTROLLER_CNI_APP
   value: "{{ include "kuma.name" . }}-cni"
+- name: KUMA_RUNTIME_KUBERNETES_NODE_TAINT_CONTROLLER_CNI_NAMESPACE
+  value: {{ .Values.cni.namespace }}
 {{- end }}
 {{- if .Values.experimental.ebpf.enabled }}
 - name: KUMA_RUNTIME_KUBERNETES_INJECTOR_EBPF_ENABLED
@@ -293,16 +329,16 @@ env:
 - name: KUMA_RUNTIME_KUBERNETES_INJECTOR_EBPF_PROGRAMS_SOURCE_PATH
   value: {{ .Values.experimental.ebpf.programsSourcePath }}
 {{- end }}
-{{- if not .Values.experimental.deltaKds }}
-- name: KUMA_EXPERIMENTAL_KDS_DELTA_ENABLED
-  value: "false"
-{{- end }}
 {{- if .Values.controlPlane.tls.kdsZoneClient.skipVerify }}
 - name: KUMA_MULTIZONE_ZONE_KDS_TLS_SKIP_VERIFY
   value: "true"
 {{- end }}
 - name: KUMA_PLUGIN_POLICIES_ENABLED
   value: {{ include "kuma.pluginPoliciesEnabled" . | quote }}
+{{- if .Values.controlPlane.supportGatewaySecretsInAllNamespaces }}
+- name: KUMA_RUNTIME_KUBERNETES_SUPPORT_GATEWAY_SECRETS_IN_ALL_NAMESPACES
+  value: true
+{{- end }}
 {{- end }}
 
 {{- define "kuma.controlPlane.tls.general.caSecretName" -}}
@@ -351,10 +387,6 @@ env:
 {{- if and (eq .Values.controlPlane.mode "zone") (or .Values.controlPlane.tls.kdsZoneClient.secretName .Values.controlPlane.tls.kdsZoneClient.create) }}
 - name: KUMA_MULTIZONE_ZONE_KDS_ROOT_CA_FILE
   value: /var/run/secrets/kuma.io/kds-client-tls-cert/ca.crt
-{{- end }}
-{{- if not .Values.experimental.deltaKds }}
-- name: KUMA_EXPERIMENTAL_KDS_DELTA_ENABLED
-  value: "false"
 {{- end }}
 {{- if .Values.controlPlane.tls.kdsZoneClient.skipVerify }}
 - name: KUMA_MULTIZONE_ZONE_KDS_TLS_SKIP_VERIFY

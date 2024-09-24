@@ -33,6 +33,9 @@ type InspectRule struct {
 	FromRules *[]FromRule `json:"fromRules,omitempty"`
 	ProxyRule *ProxyRule  `json:"proxyRule,omitempty"`
 
+	// ToResourceRules a set of rules for the resources targeted by this proxy
+	ToResourceRules *[]ResourceRule `json:"toResourceRules,omitempty"`
+
 	// ToRules a set of rules for the outbounds of this proxy
 	ToRules *[]Rule `json:"toRules,omitempty"`
 
@@ -45,6 +48,9 @@ type InspectRule struct {
 
 // Meta defines model for Meta.
 type Meta struct {
+	// Labels the label of the resource
+	Labels map[string]string `json:"labels"`
+
 	// Mesh the mesh this resource is part of
 	Mesh string `json:"mesh"`
 
@@ -72,6 +78,25 @@ type ProxyRule struct {
 	// Conf The actual conf generated
 	Conf   interface{} `json:"conf"`
 	Origin []Meta      `json:"origin"`
+}
+
+// ResourceRule defines model for ResourceRule.
+type ResourceRule struct {
+	// Conf The actual conf generated
+	Conf interface{} `json:"conf"`
+
+	// Origin The list of policies that contributed to the 'conf'. The order is important as it reflects in what order confs were merged to get the resulting 'conf'.
+	Origin              []ResourceRuleOrigin `json:"origin"`
+	ResourceMeta        Meta                 `json:"resourceMeta"`
+	ResourceSectionName *string              `json:"resourceSectionName,omitempty"`
+}
+
+// ResourceRuleOrigin defines model for ResourceRuleOrigin.
+type ResourceRuleOrigin struct {
+	ResourceMeta *Meta `json:"resourceMeta,omitempty"`
+
+	// RuleIndex index of the to-item in the policy
+	RuleIndex *int `json:"ruleIndex,omitempty"`
 }
 
 // ResourceTypeDescription Description of a resource type, this is useful for dynamically generated clients and the gui

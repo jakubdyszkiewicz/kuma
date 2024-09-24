@@ -5,10 +5,10 @@ import (
 	envoy_resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 
-	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
 	"github.com/kumahq/kuma/pkg/core"
 	core_plugins "github.com/kumahq/kuma/pkg/core/plugins"
 	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	meshexternalservice_api "github.com/kumahq/kuma/pkg/core/resources/apis/meshexternalservice/api/v1alpha1"
 	core_xds "github.com/kumahq/kuma/pkg/core/xds"
 	"github.com/kumahq/kuma/pkg/plugins/policies/core/matchers"
 	core_rules "github.com/kumahq/kuma/pkg/plugins/policies/core/rules"
@@ -35,8 +35,8 @@ func (p plugin) MatchedPolicies(dataplane *core_mesh.DataplaneResource, resource
 	return matchers.MatchedPolicies(api.MeshTrafficPermissionType, dataplane, resources, opts...)
 }
 
-func (p plugin) EgressMatchedPolicies(tags map[string]string, resources xds_context.Resources) (core_xds.TypedMatchingPolicies, error) {
-	return matchers.EgressMatchedPolicies(api.MeshTrafficPermissionType, tags, resources)
+func (p plugin) EgressMatchedPolicies(tags map[string]string, resources xds_context.Resources, opts ...core_plugins.MatchedPoliciesOption) (core_xds.TypedMatchingPolicies, error) {
+	return matchers.EgressMatchedPolicies(api.MeshTrafficPermissionType, tags, resources, opts...)
 }
 
 func (p plugin) Apply(rs *core_xds.ResourceSet, ctx xds_context.Context, proxy *core_xds.Proxy) error {
@@ -106,28 +106,48 @@ func (p plugin) denyRules() core_rules.Rules {
 	}
 }
 
+func (p plugin) allowRules() core_rules.Rules {
+	return core_rules.Rules{
+		&core_rules.Rule{
+			Subset: core_rules.MeshSubset(),
+			Conf: api.Conf{
+				Action: api.Allow,
+			},
+		},
+	}
+}
+
 func (p plugin) configureEgress(rs *core_xds.ResourceSet, proxy *core_xds.Proxy) error {
 	listeners := policies_xds.GatherListeners(rs)
 	for _, resource := range proxy.ZoneEgressProxy.MeshResourcesList {
+		meshName := resource.Mesh.GetMeta().GetName()
+		if listeners.Egress == nil {
+			log.V(1).Info("skip applying MeshTrafficPermission, Egress has no listener",
+				"proxyName", proxy.ZoneEgressProxy.ZoneEgressResource.GetMeta().GetName(),
+				"mesh", meshName,
+			)
+			return nil
+		}
 		if !resource.Mesh.MTLSEnabled() {
-			log.V(1).Info("skip applying MeshTrafficPermission, MTLS is disabled",
-				"mesh", resource.Mesh.GetMeta().GetName())
+			log.V(1).Info("skip applying MeshTrafficPermission, MTLS is disabled", "mesh", meshName)
 			continue
 		}
-		for _, es := range resource.ExternalServices {
-			meshName := resource.Mesh.GetMeta().GetName()
-			esName, ok := es.Spec.GetTags()[mesh_proto.ServiceTag]
-			if !ok {
-				continue
-			}
-			if listeners.Egress == nil {
-				log.V(1).Info("skip applying MeshTrafficPermission, Egress has no listener",
-					"proxyName", proxy.ZoneEgressProxy.ZoneEgressResource.GetMeta().GetName(),
-					"mesh", resource.Mesh.GetMeta().GetName(),
-				)
-				return nil
-			}
 
+		esNames := []string{}
+		for _, es := range resource.ExternalServices {
+			name := es.Spec.GetService()
+			if name != "" {
+				esNames = append(esNames, es.Spec.GetService())
+			}
+		}
+		// egress is configured for all meshes so we cannot use mesh context in this case
+		mesNames := []string{}
+		for _, mes := range resource.ListOrEmpty(meshexternalservice_api.MeshExternalServiceType).GetItems() {
+			meshExtSvc := mes.(*meshexternalservice_api.MeshExternalServiceResource)
+			mesNames = append(mesNames, meshExtSvc.DestinationName(uint32(meshExtSvc.Spec.Match.Port)))
+		}
+
+		for _, esName := range esNames {
 			var rules core_rules.FromRules
 			if policies, ok := resource.Dynamic[esName]; ok {
 				if mtp, ok := policies[api.MeshTrafficPermissionType]; ok {
@@ -150,10 +170,37 @@ func (p plugin) configureEgress(rs *core_xds.ResourceSet, proxy *core_xds.Proxy)
 				configurer := &v3.RBACConfigurer{
 					StatsName: listeners.Egress.Name,
 					Rules:     rule,
-					Mesh:      resource.Mesh.GetMeta().GetName(),
+					Mesh:      meshName,
 				}
 				for _, filterChain := range listeners.Egress.FilterChains {
 					if filterChain.Name == names.GetEgressFilterChainName(esName, meshName) {
+						if err := configurer.Configure(filterChain); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+
+		for _, mesName := range mesNames {
+			rule := p.allowRules()
+			if resource.Mesh.Spec.GetRouting() != nil && resource.Mesh.Spec.GetRouting().DefaultForbidMeshExternalServiceAccess {
+				rule = p.denyRules()
+			}
+			rules := core_rules.FromRules{
+				Rules: map[core_rules.InboundListener]core_rules.Rules{
+					{}: rule,
+				},
+			}
+
+			for _, rule := range rules.Rules {
+				configurer := &v3.RBACConfigurer{
+					StatsName: listeners.Egress.Name,
+					Rules:     rule,
+					Mesh:      meshName,
+				}
+				for _, filterChain := range listeners.Egress.FilterChains {
+					if filterChain.Name == mesName {
 						if err := configurer.Configure(filterChain); err != nil {
 							return err
 						}

@@ -30,7 +30,7 @@ const OriginPrometheus = "prometheus"
 // rather than introduce undeterministic behavior.
 type PrometheusEndpointGenerator struct{}
 
-var prometheusLog = core.Log.WithName("prometheus-endpoint-generator")
+var prometheusLog = core.Log.WithName("xds").WithName("prometheus-endpoint-generator")
 
 func (g PrometheusEndpointGenerator) Generate(ctx context.Context, _ *core_xds.ResourceSet, xdsCtx xds_context.Context, proxy *core_xds.Proxy) (*core_xds.ResourceSet, error) {
 	prometheusEndpoint, err := proxy.Dataplane.GetPrometheusConfig(xdsCtx.Mesh.Resource)
@@ -66,7 +66,7 @@ func (g PrometheusEndpointGenerator) Generate(ctx context.Context, _ *core_xds.R
 	cluster, err := envoy_clusters.NewClusterBuilder(proxy.APIVersion, metricsHijackerClusterName).
 		Configure(envoy_clusters.ProvidedEndpointCluster(proxy.Dataplane.IsIPv6(),
 			core_xds.Endpoint{
-				UnixDomainPath: proxy.Metadata.MetricsSocketPath,
+				UnixDomainPath: core_xds.MetricsHijackerSocketName(proxy.Metadata.WorkDir, proxy.Id.ToResourceKey().Name, proxy.Id.ToResourceKey().Mesh),
 			},
 		)).
 		Configure(envoy_clusters.DefaultTimeout()).
@@ -113,7 +113,7 @@ func (g PrometheusEndpointGenerator) Generate(ctx context.Context, _ *core_xds.R
 		case mesh_proto.PrometheusTlsConfig_activeMTLSBackend:
 			listenerBuilder = listenerBuilder.Configure(envoy_listeners.FilterChain(
 				envoy_listeners.NewFilterChainBuilder(proxy.APIVersion, envoy_common.AnonymousResource).Configure(
-					envoy_listeners.ServerSideMTLS(xdsCtx.Mesh.Resource, proxy.SecretsTracker),
+					envoy_listeners.ServerSideMTLS(xdsCtx.Mesh.Resource, proxy.SecretsTracker, nil, nil),
 					envoy_listeners.StaticEndpoints(prometheusListenerName,
 						[]*envoy_common.StaticEndpointPath{
 							{

@@ -24,11 +24,15 @@ func VirtualOutbound() {
 			Install(testserver.Install(
 				testserver.WithMesh(meshName),
 				testserver.WithNamespace(namespace),
-				testserver.WithStatefulSet(true),
+				testserver.WithStatefulSet(),
 				testserver.WithReplicas(2),
 			)).
 			Setup(kubernetes.Cluster)
 		Expect(err).ToNot(HaveOccurred())
+	})
+
+	AfterEachFailure(func() {
+		DebugKube(kubernetes.Cluster, meshName, namespace)
 	})
 
 	E2EAfterAll(func() {

@@ -40,12 +40,15 @@ KUMA_NAMESPACE ?= kuma-system
 PORT_PREFIX := $$(($(patsubst 300-%,300+%-1,$(KIND_CLUSTER_NAME:kuma%=300%))))
 
 K3D_NETWORK_CNI ?= flannel
+K3D_REGISTRY_FILE ?=
 K3D_CLUSTER_CREATE_OPTS ?= -i rancher/k3s:$(CI_K3S_VERSION) \
 	--k3s-arg '--disable=traefik@server:0' \
+	--k3s-arg '--kubelet-arg=image-gc-high-threshold=100@server:0' \
 	--k3s-arg '--disable=servicelb@server:0' \
     --volume '$(subst @,\@,$(TOP)/$(KUMA_DIR))/test/framework/deployments:/tmp/deployments@server:0' \
 	--network kind \
 	--port "$(PORT_PREFIX)80-$(PORT_PREFIX)99:30080-30099@server:0" \
+	--registry-config "/tmp/.kuma-dev/k3d-registry.yaml" \
 	--timeout 120s
 
 ifeq ($(K3D_NETWORK_CNI),calico)
@@ -67,15 +70,63 @@ ifndef CI
 endif
 endif
 
+KIND_NETWORK_OPTS =  -o com.docker.network.bridge.enable_ip_masquerade=true
+ifdef IPV6
+    KIND_NETWORK_OPTS += --ipv6 --subnet "fd00:fd12:3456::0/64"
+endif
+
+K3D_HELM_DEPLOY_OPTS = \
+	--set global.image.registry="$(DOCKER_REGISTRY)"
+
+ifeq ($(BUILD_INFO_VERSION),0.0.0-preview.vlocal-build)
+	K3D_HELM_DEPLOY_OPTS += \
+		--set global.image.tag="$(BUILD_INFO_VERSION)"
+else
+	K3D_HELM_DEPLOY_OPTS += \
+		--set controlPlane.image.tag="$(BUILD_INFO_VERSION)" \
+		--set cni.image.tag="$(BUILD_INFO_VERSION)" \
+		--set dataPlane.image.tag="$(BUILD_INFO_VERSION)" \
+		--set dataPlane.initImage.tag="$(BUILD_INFO_VERSION)" \
+		--set kumactl.image.tag="$(BUILD_INFO_VERSION)"
+endif
+
+ifndef K3D_HELM_DEPLOY_NO_CNI
+	K3D_HELM_DEPLOY_OPTS += \
+		--set cni.enabled=true \
+		--set cni.chained=true \
+		--set cni.netDir=/var/lib/rancher/k3s/agent/etc/cni/net.d/ \
+		--set cni.binDir=/bin/ \
+		--set cni.confName=10-flannel.conflist
+endif
+
+ifdef K3D_HELM_DEPLOY_ADDITIONAL_OPTS
+	K3D_HELM_DEPLOY_OPTS += $(K3D_HELM_DEPLOY_ADDITIONAL_OPTS)
+endif
+
 .PHONY: k3d/network/create
 k3d/network/create:
 	@touch $(BUILD_DIR)/k3d_network.lock && \
-		if [ `which flock` ]; then flock -x $(BUILD_DIR)/k3d_network.lock -c 'docker network create -d=bridge -o com.docker.network.bridge.enable_ip_masquerade=true --ipv6 --subnet "fd00:fd12:3456::0/64" kind || true'; \
-		else docker network create -d=bridge -o com.docker.network.bridge.enable_ip_masquerade=true --ipv6 --subnet "fd00:fd12:3456::0/64" kind || true; fi && \
+		if [ `which flock` ]; then flock -x $(BUILD_DIR)/k3d_network.lock -c 'docker network create -d=bridge $(KIND_NETWORK_OPTS) kind || true'; \
+		else docker network create -d=bridge $(KIND_NETWORK_OPTS) kind || true; fi && \
 		rm -f $(BUILD_DIR)/k3d_network.lock
 
+DOCKERHUB_PULL_CREDENTIAL ?=
+.PHONY: k3d/setup-docker-credentials
+k3d/setup-docker-credentials:
+	@mkdir -p /tmp/.kuma-dev ; \
+	echo '{"configs": {}}' > /tmp/.kuma-dev/k3d-registry.yaml ; \
+	if [[ "$(DOCKERHUB_PULL_CREDENTIAL)" != "" ]]; then \
+  		DOCKER_USER=$$(echo "$(DOCKERHUB_PULL_CREDENTIAL)" | cut -d ':' -f 1); \
+  		DOCKER_PWD=$$(echo "$(DOCKERHUB_PULL_CREDENTIAL)" | cut -d ':' -f 2); \
+  		echo "{\"configs\": {\"registry-1.docker.io\": {\"auth\": {\"username\": \"$${DOCKER_USER}\",\"password\":\"$${DOCKER_PWD}\"}}}}" > /tmp/.kuma-dev/k3d-registry.yaml ; \
+  	fi
+
+.PHONY: k3d/cleanup-docker-credentials
+k3d/cleanup-docker-credentials:
+	@rm -f /tmp/.kuma-dev/k3d-registry.yaml
+
 .PHONY: k3d/start
-k3d/start: ${KIND_KUBECONFIG_DIR} k3d/network/create
+k3d/start: ${KIND_KUBECONFIG_DIR} k3d/network/create k3d/setup-docker-credentials
 	@echo "PORT_PREFIX=$(PORT_PREFIX)"
 	@KUBECONFIG=$(KIND_KUBECONFIG) \
 		$(K3D_BIN) cluster create "$(KIND_CLUSTER_NAME)" $(K3D_CLUSTER_CREATE_OPTS)
@@ -102,12 +153,13 @@ k3d/configure/metallb:
 	@KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) apply -f https://raw.githubusercontent.com/metallb/metallb/$(METALLB_VERSION)/config/manifests/metallb-native.yaml
 	@KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) wait --timeout=120s --for=condition=Ready -n metallb-system --all pods
 	@# Construct a valid address space from the docker network and the template IPAddressPool
-	@IFS=. read -ra NETWORK_ADDR_SPACE <<< "$$(docker network inspect kind --format '{{ (index .IPAM.Config 0).Subnet }}')"; \
+	@# Make sure we only take an IPv4 network
+	@IFS=. read -ra NETWORK_ADDR_SPACE <<< "$$(docker network inspect kind --format json | jq -r '.[0].IPAM.Config[].Subnet | select(. | contains(":") | not)')"; \
 		IFS=/ read -r _byte prefix <<< "$${NETWORK_ADDR_SPACE[3]}"; \
 		    if [[ "$${prefix}" -gt 16 ]]; then echo "Unexpected docker network, expecting a prefix of at most 16 bits"; exit 1; fi; \
-		IFS=. read -ra BASE_ADDR_SPACE <<< "$$(yq 'select(.kind == "IPAddressPool") | .spec.addresses[0]' $(KUMA_DIR)/mk/metallb-k3d-$(KIND_CLUSTER_NAME).yaml)"; \
+		IFS=. read -ra BASE_ADDR_SPACE <<< "$$($(YQ) 'select(.kind == "IPAddressPool") | .spec.addresses[0]' $(KUMA_DIR)/mk/metallb-k3d-$(KIND_CLUSTER_NAME).yaml)"; \
 		ADDR_SPACE="$${NETWORK_ADDR_SPACE[0]}.$${NETWORK_ADDR_SPACE[1]}.$${BASE_ADDR_SPACE[2]}.$${BASE_ADDR_SPACE[3]}" \
-	      yq '(select(.kind == "IPAddressPool") | .spec.addresses[0]) = env(ADDR_SPACE)' $(KUMA_DIR)/mk/metallb-k3d-$(KIND_CLUSTER_NAME).yaml | \
+	      $(YQ) '(select(.kind == "IPAddressPool") | .spec.addresses[0]) = env(ADDR_SPACE)' $(KUMA_DIR)/mk/metallb-k3d-$(KIND_CLUSTER_NAME).yaml | \
 		KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) apply -f -
 
 .PHONY: k3d/wait
@@ -121,7 +173,7 @@ k3d/wait:
     done
 
 .PHONY: k3d/stop
-k3d/stop:
+k3d/stop: k3d/cleanup-docker-credentials
 	@KUBECONFIG=$(KIND_KUBECONFIG) $(K3D_BIN) cluster delete "$(KIND_CLUSTER_NAME)"
 
 .PHONY: k3d/stop/all
@@ -135,9 +187,11 @@ k3d/load/images:
 
 .PHONY: k3d/load
 k3d/load:
+ifndef K3D_DONT_LOAD
 	$(MAKE) images
 	$(MAKE) docker/tag
 	$(MAKE) k3d/load/images
+endif
 
 .PHONY: k3d/deploy/kuma
 k3d/deploy/kuma: build/kumactl k3d/load
@@ -150,17 +204,17 @@ k3d/deploy/kuma: build/kumactl k3d/load
 
 .PHONY: k3d/deploy/helm
 k3d/deploy/helm: k3d/load
-	KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) delete namespace $(KUMA_NAMESPACE) --wait | true
-	KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) create namespace $(KUMA_NAMESPACE)
-	KUBECONFIG=$(KIND_KUBECONFIG) helm upgrade --install --namespace $(KUMA_NAMESPACE) \
-                --set global.image.registry="$(DOCKER_REGISTRY)" \
-                --set global.image.tag="$(BUILD_INFO_VERSION)" \
-                --set cni.enabled=true \
-                --set cni.chained=true \
-                --set cni.netDir=/var/lib/rancher/k3s/agent/etc/cni/net.d/ \
-                --set cni.binDir=/bin/ \
-                --set cni.confName=10-flannel.conflist \
-                kuma ./deployments/charts/kuma
+ifndef K3D_DEPLOY_HELM_DONT_DELETE_NS
+	@KUBECONFIG=$(KIND_KUBECONFIG) helm delete --wait --ignore-not-found --namespace $(KUMA_NAMESPACE) kuma 2>/dev/null
+	@until \
+	    ! @KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) get pods -n $(KUMA_NAMESPACE) --selector app=kuma-control-plane 2>/dev/null ; \
+	do sleep 1; done
+	@KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) delete namespace $(KUMA_NAMESPACE) --force --wait --ignore-not-found 2>/dev/null
+	@until \
+	    ! @KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) get namespace $(KUMA_NAMESPACE) 2>/dev/null ; \
+	do sleep 1; done
+endif
+	KUBECONFIG=$(KIND_KUBECONFIG) helm upgrade --install --namespace $(KUMA_NAMESPACE) --create-namespace $(K3D_HELM_DEPLOY_OPTS) kuma ./deployments/charts/kuma
 	@KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) wait --timeout=60s --for=condition=Available -n $(KUMA_NAMESPACE) deployment/kuma-control-plane
 	@KUBECONFIG=$(KIND_KUBECONFIG) $(KUBECTL) wait --timeout=60s --for=condition=Ready -n $(KUMA_NAMESPACE) pods -l app=kuma-control-plane
 

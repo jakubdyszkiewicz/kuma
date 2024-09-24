@@ -48,18 +48,12 @@ jobs:
     outputs:
       BINARY_ARTIFACT_DIGEST_BASE64: ${{ steps.inspect-binary-output.outputs.binary_artifact_digest_base64 }}
     steps:
-      - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v4.1.2
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           fetch-depth: 0
-      - name: "Add matrix to .build/info to cache"
-        run: |
-          make build/info/short > .build-info
-      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
           go-version-file: go.mod
-          cache-dependency-path: |
-            .build-info
-            go.sum
       - uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
           path: |
@@ -77,7 +71,7 @@ jobs:
           echo "Artifact digest:"
           cat ./build/distributions/artifact_digest_file.text
           echo "binary_artifact_digest_base64=$(cat ./build/distributions/artifact_digest_file.text)" > $GITHUB_OUTPUT
-      - uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+      - uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         id: binary-artifacts
         with:
           name: ${{ inputs.BINARY_ARTIFACT_NAME }}
@@ -101,19 +95,16 @@ jobs:
       matrix:
         image: ${{ fromJSON(inputs.images) }}
     steps:
-      - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v4.1.2
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           fetch-depth: 0
       - name: Install dependencies for cross builds
         if: ${{ fromJSON(inputs.FULL_MATRIX) }}
         run: |
           sudo apt-get update; sudo apt-get install -y qemu-user-static binfmt-support
-      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
           go-version-file: go.mod
-          cache-dependency-path: |
-            .build-info
-            go.sum
       - uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
           path: |
@@ -127,8 +118,6 @@ jobs:
         run: |
           echo "Extracting image meta for ${{ matrix.image }}"
           echo "image=${{ inputs.REGISTRY }}/${{ matrix.image }}:${{ inputs.VERSION_NAME }}" >> $GITHUB_OUTPUT
-          # Add matrix to .build/info to cache
-          make build/info/short > .build-info
       - run: |
           make images/${{ matrix.image }}
       - run: |
@@ -139,7 +128,7 @@ jobs:
           make test/container-structure/${{ matrix.image }}
       - name: scan amd64 image
         id: scan_image-amd64
-        uses: Kong/public-shared-actions/security-actions/scan-docker-image@0ff22c9835d745aefc41a99de6d526dc9e984105 # v2.2.0
+        uses: Kong/public-shared-actions/security-actions/scan-docker-image@ecbcd7051e12e6e3dc37dc890820bbce457bc05f # v2.6.0
         with:
           asset_prefix: image_${{ matrix.image }}-amd64
           image: ./build/docker/${{ matrix.image }}-amd64.tar
@@ -147,7 +136,7 @@ jobs:
       - name: scan arm64 image
         id: scan_image-arm64
         if: ${{ fromJSON(inputs.FULL_MATRIX) }}
-        uses: Kong/public-shared-actions/security-actions/scan-docker-image@0ff22c9835d745aefc41a99de6d526dc9e984105 # v2.2.0
+        uses: Kong/public-shared-actions/security-actions/scan-docker-image@ecbcd7051e12e6e3dc37dc890820bbce457bc05f # v2.6.0
         with:
           asset_prefix: image_${{ matrix.image }}-arm64
           image: ./build/docker/${{ matrix.image }}-arm64.tar
@@ -178,14 +167,14 @@ jobs:
           echo "Got digest: $digest"
           echo "digest=${digest}" >> $GITHUB_OUTPUT
           echo "{\"${{matrix.image}}\": \"${digest}\"}" > ./build/docker/${{ matrix.image }}.digest.json
-      - uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+      - uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         id: image-artifacts
         with:
           name: image_${{ matrix.image }}
           path: |
             ./build/docker/*.tar
           retention-days: ${{ github.event_name == 'pull_request' && 1 || 30 }}
-      - uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+      - uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         id: image-digest-artifacts
         with:
           name: image_${{ matrix.image }}.digest.json
@@ -195,7 +184,7 @@ jobs:
       - name: sign image
         if: ${{ fromJSON(inputs.ALLOW_PUSH) }}
         id: sign
-        uses: Kong/public-shared-actions/security-actions/sign-docker-image@0ff22c9835d745aefc41a99de6d526dc9e984105 # v2.2.0
+        uses: Kong/public-shared-actions/security-actions/sign-docker-image@ecbcd7051e12e6e3dc37dc890820bbce457bc05f # v2.6.0
         with:
           image_digest: ${{ steps.image_digest.outputs.digest }}
           tags: ${{ steps.image_meta.outputs.image }}
@@ -208,7 +197,7 @@ jobs:
     outputs:
       DIGESTS: ${{ steps.compute-digests.outputs.digests }}
     steps:
-      - uses: actions/download-artifact@c850b930e6ba138125429b7e5c93fc707a7f8427 # v4.1.4
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           pattern: "image_*.digest.json"
           path: ./digests
@@ -224,14 +213,14 @@ jobs:
     timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v4.1.2
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           fetch-depth: 0
       - name: Install dependencies for cross builds
         if: ${{ fromJSON(inputs.FULL_MATRIX) }}
         run: |
           sudo apt-get update; sudo apt-get install -y qemu-user-static binfmt-support
-      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
           go-version-file: go.mod
           cache-dependency-path: |
@@ -264,7 +253,7 @@ jobs:
           PKG_FILENAME=$(find .cr-release-packages -type f -printf "%f\n")
           echo "filename=${PKG_FILENAME}" >> $GITHUB_OUTPUT
       - name: Upload packaged chart
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         with:
           name: ${{ steps.package-helm.outputs.filename }}
           path: .cr-release-packages/${{ steps.package-helm.outputs.filename }}
@@ -274,7 +263,7 @@ jobs:
       - name: Generate GitHub app token
         id: github-app-token
         if: ${{ github.ref_type == 'tag' }}
-        uses: actions/create-github-app-token@7bfa3a4717ef143a604ee0a99d859b8886a96d00 # v1.9.3
+        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}

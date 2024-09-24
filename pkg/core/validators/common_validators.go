@@ -223,7 +223,7 @@ func ValidateIntegerGreaterThan(path PathBuilder, value uint32, minValue uint32)
 	return err
 }
 
-var BandwidthRegex = regexp.MustCompile(`(\d*)\s?([GMk]?bps)`)
+var BandwidthRegex = regexp.MustCompile(`^(\d*)\s?([GMk]+bps)$`)
 
 func ValidateBandwidth(path PathBuilder, value string) ValidationError {
 	var err ValidationError
@@ -251,4 +251,25 @@ func ValidatePort(path PathBuilder, value uint32) ValidationError {
 		err.AddViolationAt(path, "port must be a valid (1-65535)")
 	}
 	return err
+}
+
+// ValidateLength should only be used when kubebuilder annotations can't be used
+func ValidateLength(path PathBuilder, maxLength int, v string) ValidationError {
+	var err ValidationError
+	if len(v) > maxLength {
+		err.AddViolationAt(path, fmt.Sprintf("must not be longer than %d characters", maxLength))
+	}
+
+	return err
+}
+
+func ValidateBackendRef(b common_api.BackendRef) ValidationError {
+	verr := OK()
+	switch b.Kind {
+	case common_api.MeshMultiZoneService:
+		if b.Port == nil {
+			verr.AddViolationAt(RootedAt("port"), MustBeDefined+" with kind MeshMultiZoneService")
+		}
+	}
+	return verr
 }

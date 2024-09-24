@@ -12,7 +12,7 @@ type MeshRateLimit struct {
 	// TargetRef is a reference to the resource the policy takes an effect on.
 	// The resource could be either a real store object or virtual resource
 	// defined inplace.
-	TargetRef common_api.TargetRef `json:"targetRef"`
+	TargetRef *common_api.TargetRef `json:"targetRef,omitempty"`
 	// From list makes a match between clients and corresponding configurations
 	From []From `json:"from,omitempty"`
 	// To list makes a match between clients and corresponding configurations
@@ -47,7 +47,7 @@ type Local struct {
 	TCP  *LocalTCP  `json:"tcp,omitempty"`
 }
 
-// LocalHTTP defines confguration of local HTTP rate limiting
+// LocalHTTP defines configuration of local HTTP rate limiting
 // https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/local_rate_limit_filter
 type LocalHTTP struct {
 	// Define if rate limiting should be disabled.

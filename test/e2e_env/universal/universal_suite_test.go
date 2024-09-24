@@ -18,12 +18,15 @@ import (
 	"github.com/kumahq/kuma/test/e2e_env/universal/matching"
 	"github.com/kumahq/kuma/test/e2e_env/universal/membership"
 	"github.com/kumahq/kuma/test/e2e_env/universal/meshaccesslog"
+	"github.com/kumahq/kuma/test/e2e_env/universal/meshexternalservice"
 	"github.com/kumahq/kuma/test/e2e_env/universal/meshfaultinjection"
 	"github.com/kumahq/kuma/test/e2e_env/universal/meshhealthcheck"
 	"github.com/kumahq/kuma/test/e2e_env/universal/meshloadbalancingstrategy"
 	"github.com/kumahq/kuma/test/e2e_env/universal/meshproxypatch"
 	"github.com/kumahq/kuma/test/e2e_env/universal/meshratelimit"
 	"github.com/kumahq/kuma/test/e2e_env/universal/meshretry"
+	"github.com/kumahq/kuma/test/e2e_env/universal/meshservice"
+	"github.com/kumahq/kuma/test/e2e_env/universal/meshtls"
 	"github.com/kumahq/kuma/test/e2e_env/universal/meshtrafficpermission"
 	"github.com/kumahq/kuma/test/e2e_env/universal/mtls"
 	"github.com/kumahq/kuma/test/e2e_env/universal/observability"
@@ -42,7 +45,6 @@ import (
 	"github.com/kumahq/kuma/test/e2e_env/universal/zoneegress"
 	. "github.com/kumahq/kuma/test/framework"
 	"github.com/kumahq/kuma/test/framework/envs/universal"
-	"github.com/kumahq/kuma/test/framework/universal_logs"
 )
 
 func TestE2E(t *testing.T) {
@@ -51,12 +53,8 @@ func TestE2E(t *testing.T) {
 
 var (
 	_ = E2ESynchronizedBeforeSuite(universal.SetupAndGetState, universal.RestoreState)
-	_ = ReportAfterSuite("cleanup", func(report Report) {
-		if Config.CleanupLogsOnSuccess {
-			universal_logs.CleanupIfSuccess(Config.UniversalE2ELogsPath, report)
-		}
-	})
-	_ = ReportAfterSuite("cp logs", universal.PrintCPLogsOnFailure)
+	_ = SynchronizedAfterSuite(func() {}, universal.SynchronizedAfterSuite)
+	_ = ReportAfterSuite("universal after suite", universal.AfterSuite)
 )
 
 var (
@@ -73,6 +71,8 @@ var (
 	_ = Describe("External Services", externalservices.Policy, Ordered)
 	_ = Describe("External Services through Zone Egress", externalservices.ThroughZoneEgress, Ordered)
 	_ = Describe("Inspect", inspect.Inspect, Ordered)
+	_ = Describe("Mesh External Services", meshexternalservice.MeshExternalService, Ordered)
+	_ = Describe("MeshService", meshservice.MeshService, Ordered)
 	_ = Describe("Applications Metrics", observability.ApplicationsMetrics, Ordered)
 	_ = Describe("Tracing", observability.Tracing, Ordered)
 	_ = Describe("MeshTrace", observability.PluginTest, Ordered)
@@ -91,7 +91,8 @@ var (
 	_ = Describe("Reachable Services", reachableservices.ReachableServices, Ordered)
 	_ = Describe("Apis", api.Api, Ordered)
 	_ = Describe("Traffic Permission", trafficpermission.TrafficPermission, Ordered)
-	_ = Describe("Traffic Route", trafficroute.TrafficRoute, Ordered)
+	// TODO: fix the flaky test in the future https://github.com/kumahq/kuma/issues/11492
+	_ = Describe("Traffic Route", trafficroute.TrafficRoute, Ordered, FlakeAttempts(3))
 	_ = Describe("Zone Egress", zoneegress.ExternalServices, Ordered)
 	_ = Describe("Virtual Outbound", virtualoutbound.VirtualOutbound, Ordered)
 	_ = Describe("Transparent Proxy", transparentproxy.TransparentProxy, Ordered)
@@ -100,11 +101,12 @@ var (
 	_ = Describe("MeshRateLimit", meshratelimit.Policy, Ordered)
 	_ = Describe("MeshTimeout", timeout.PluginTest, Ordered)
 	_ = Describe("Projected Service Account Token", projectedsatoken.ProjectedServiceAccountToken, Ordered)
-	_ = Describe("Compatibility", compatibility.UniversalCompatibility, Label("arm-not-supported"), Ordered)
+	_ = Describe("Compatibility", compatibility.UniversalCompatibility, Ordered)
 	_ = Describe("Resilience", resilience.ResilienceUniversal, Ordered)
 	_ = Describe("Leader Election", resilience.LeaderElectionPostgres, Ordered)
 	_ = Describe("MeshFaultInjection", meshfaultinjection.Policy, Ordered)
 	_ = Describe("MeshLoadBalancingStrategy", meshloadbalancingstrategy.Policy, Ordered)
 	_ = Describe("InterCP Server", intercp.InterCP, Ordered)
 	_ = Describe("Prometheus Metrics", observability.PrometheusMetrics, Ordered)
+	_ = Describe("MeshTLS", meshtls.Policy, Ordered)
 )

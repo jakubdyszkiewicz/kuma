@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
 	core_xds "github.com/kumahq/kuma/pkg/core/xds"
 	"github.com/kumahq/kuma/pkg/xds/envoy/tags"
 )
@@ -145,6 +146,7 @@ type Service struct {
 	clusters           []Cluster
 	hasExternalService bool
 	tlsReady           bool
+	backendRef         *model.ResolvedBackendRef
 }
 
 func (c *Service) Add(cluster Cluster) {
@@ -172,6 +174,10 @@ func (c *Service) Clusters() []Cluster {
 
 func (c *Service) TLSReady() bool {
 	return c.tlsReady
+}
+
+func (c *Service) BackendRef() *model.ResolvedBackendRef {
+	return c.backendRef
 }
 
 type Services map[string]*Service
@@ -211,6 +217,21 @@ func (sa ServicesAccumulator) Add(clusters ...Cluster) {
 		}
 		sa.services[c.Service()].Add(c)
 	}
+}
+
+func (sa ServicesAccumulator) AddBackendRef(backendRef *model.ResolvedBackendRef, cluster Cluster) {
+	if sa.services[cluster.Service()] == nil {
+		sa.services[cluster.Service()] = &Service{
+			tlsReady:   sa.tlsReadiness[cluster.Service()],
+			name:       cluster.Service(),
+			backendRef: backendRef,
+		}
+	}
+	// prioritize backendRef pointing to real resource
+	if backendRef.ReferencesRealResource() && !sa.services[cluster.Service()].backendRef.ReferencesRealResource() {
+		sa.services[cluster.Service()].backendRef = backendRef
+	}
+	sa.services[cluster.Service()].Add(cluster)
 }
 
 type CLACache interface {

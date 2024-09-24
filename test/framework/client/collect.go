@@ -372,10 +372,9 @@ func MakeDirectRequest(
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return dialer.Dial(network, u.Host)
 			},
-			// #nosec G402 -- Intentionally weak in tests
 			TLSClientConfig: &tls.Config{
 				ServerName:         req.Host,
-				InsecureSkipVerify: true,
+				InsecureSkipVerify: true,                 // #nosec G402 -- Intentionally weak in tests
 				NextProtos:         []string{"http/1.1"}, // ALPN is required by Envoy
 			},
 		}
@@ -560,7 +559,7 @@ func callConcurrently(destination string, call func() (interface{}, error), fn .
 	for i := uint(0); i < opts.numberOfRequests; i++ {
 		res := <-results
 		if res.err != nil {
-			framework.Logf("got error", "idx", res.idx, "err", res.err)
+			framework.Logf("got error idx: %d err: %v", res.idx, res.err)
 			return nil, res.err
 		}
 		responses = append(responses, res.res)

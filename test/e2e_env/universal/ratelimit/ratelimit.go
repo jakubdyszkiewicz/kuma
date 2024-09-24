@@ -45,8 +45,14 @@ conf:
 			Install(TrafficPermissionUniversal(meshName)).
 			Setup(universal.Cluster)).To(Succeed())
 	})
+
+	AfterEachFailure(func() {
+		DebugUniversal(universal.Cluster, meshName)
+	})
+
 	E2EAfterAll(func() {
 		Expect(universal.Cluster.DeleteMeshApps(meshName)).To(Succeed())
+		Expect(universal.Cluster.DeleteApp("rate-limit")).To(Succeed())
 		Expect(universal.Cluster.DeleteMesh(meshName)).To(Succeed())
 	})
 	requestRateLimited := func(container string, svc string, responseCode int) func(g Gomega) {

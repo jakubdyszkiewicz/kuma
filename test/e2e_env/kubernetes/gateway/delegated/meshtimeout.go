@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	meshretry_api "github.com/kumahq/kuma/pkg/plugins/policies/meshretry/api/v1alpha1"
 	"github.com/kumahq/kuma/pkg/plugins/policies/meshtimeout/api/v1alpha1"
 	"github.com/kumahq/kuma/test/framework"
 	"github.com/kumahq/kuma/test/framework/client"
@@ -18,18 +17,8 @@ func MeshTimeout(config *Config) func() {
 	GinkgoHelper()
 
 	return func() {
-		BeforeAll(func() {
-			Expect(framework.DeleteMeshResources(
-				kubernetes.Cluster,
-				config.Mesh,
-				v1alpha1.MeshTimeoutResourceTypeDescriptor,
-			)).To(Succeed())
-
-			Expect(framework.DeleteMeshResources(
-				kubernetes.Cluster,
-				config.Mesh,
-				meshretry_api.MeshRetryResourceTypeDescriptor,
-			)).To(Succeed())
+		framework.AfterEachFailure(func() {
+			framework.DebugKube(kubernetes.Cluster, config.Mesh, config.Namespace, config.ObservabilityDeploymentName)
 		})
 
 		framework.E2EAfterEach(func() {
@@ -83,7 +72,7 @@ func MeshTimeout(config *Config) func() {
 apiVersion: kuma.io/v1alpha1
 kind: MeshTimeout
 metadata:
-  name: mt1
+  name: mt1-delegated
   namespace: %s
   labels:
     kuma.io/mesh: %s
@@ -91,25 +80,6 @@ spec:
   targetRef:
     kind: Mesh
   to:
-    - targetRef:
-        kind: Mesh
-      default:
-        idleTimeout: 20s
-        http:
-          requestTimeout: 2s
-          maxStreamDuration: 20s`, config.CpNamespace, config.Mesh)),
-			Entry("inbound timeout", fmt.Sprintf(`
-apiVersion: kuma.io/v1alpha1
-kind: MeshTimeout
-metadata:
-  name: mt1
-  namespace: %s
-  labels:
-    kuma.io/mesh: %s
-spec:
-  targetRef:
-    kind: Mesh
-  from:
     - targetRef:
         kind: Mesh
       default:

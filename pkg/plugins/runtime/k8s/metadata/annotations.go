@@ -55,6 +55,9 @@ const (
 	// KumaVirtualProbesPortAnnotation is an insecure port for listening virtual probes
 	KumaVirtualProbesPortAnnotation = "kuma.io/virtual-probes-port"
 
+	// KumaApplicationProbeProxyPortAnnotation is a port for proxying application probes
+	KumaApplicationProbeProxyPortAnnotation = "kuma.io/application-probe-proxy-port"
+
 	// KumaSidecarEnvVarsAnnotation is a ; separated list of env vars that will be applied on Kuma Sidecar
 	// Example value: TEST1=1;TEST2=2
 	KumaSidecarEnvVarsAnnotation = "kuma.io/sidecar-env-vars"
@@ -76,17 +79,25 @@ const (
 	KumaBuiltinDNSPort    = "kuma.io/builtin-dns-port"
 	KumaBuiltinDNSLogging = "kuma.io/builtin-dns-logging"
 
-	KumaTrafficExcludeInboundPorts            = "traffic.kuma.io/exclude-inbound-ports"
-	KumaTrafficExcludeOutboundPorts           = "traffic.kuma.io/exclude-outbound-ports"
-	KumaTrafficExcludeOutboundPortsForUIDs    = "traffic.kuma.io/exclude-outbound-ports-for-uids"
-	KumaTrafficExcludeOutboundTCPPortsForUIDs = "traffic.kuma.io/exclude-outbound-tcp-ports-for-uids"
-	KumaTrafficExcludeOutboundUDPPortsForUIDs = "traffic.kuma.io/exclude-outbound-udp-ports-for-uids"
+	// KumaTrafficTransparentProxyConfig is an annotation used to pass a YAML with the transparent proxy
+	// configuration in CNI mode, allowing the new logic to retrieve the config from the annotation
+	// instead of processing the ConfigMap explicitly
+	KumaTrafficTransparentProxyConfig = "traffic.kuma.io/transparent-proxy-config"
+	// KumaTrafficTransparentProxyConfigMapName is an annotation used to specify the name of the
+	// ConfigMap containing the transparent proxy configuration. This allows the configuration to be
+	// retrieved by referencing the ConfigMap's name, enabling flexible and dynamic assignment of
+	// proxy settings
+	KumaTrafficTransparentProxyConfigMapName = "traffic.kuma.io/transparent-proxy-configmap-name"
+	KumaTrafficExcludeInboundPorts           = "traffic.kuma.io/exclude-inbound-ports"
+	KumaTrafficExcludeOutboundPorts          = "traffic.kuma.io/exclude-outbound-ports"
+	KumaTrafficExcludeOutboundPortsForUIDs   = "traffic.kuma.io/exclude-outbound-ports-for-uids"
+	KumaTrafficDropInvalidPackets            = "traffic.kuma.io/drop-invalid-packets"
+	KumaTrafficIptablesLogs                  = "traffic.kuma.io/iptables-logs"
+	KumaTrafficExcludeInboundIPs             = "traffic.kuma.io/exclude-inbound-ips"
+	KumaTrafficExcludeOutboundIPs            = "traffic.kuma.io/exclude-outbound-ips"
 
 	// KumaSidecarTokenVolumeAnnotation allows to specify which volume contains the service account token
 	KumaSidecarTokenVolumeAnnotation = "kuma.io/service-account-token-volume"
-
-	// KumaTransparentProxyingEngineV1 enables transparent proxy engine v1 (legacy)
-	KumaTransparentProxyingEngineV1 = "kuma.io/transparent-proxying-engine-v1"
 
 	// KumaSidecarDrainTime allows to specify drain time of Kuma DP sidecar.
 	KumaSidecarDrainTime = "kuma.io/sidecar-drain-time"
@@ -115,11 +126,19 @@ const (
 	KumaInitFirst = "kuma.io/init-first"
 	// KumaWaitForDataplaneReady allows to specify if the application sidecar should be hold until Envoy is ready
 	KumaWaitForDataplaneReady = "kuma.io/wait-for-dataplane-ready"
+
+	// KumaServiceName points to the Service that a MeshService is derived from
+	KumaServiceName = "k8s.kuma.io/service-name"
+
+	// HeadlessService is "true" when the Service had ClusterIP: None, otherwise "false"
+	HeadlessService = "k8s.kuma.io/is-headless-service"
 )
 
 var PodAnnotationDeprecations = []Deprecation{
 	NewReplaceByDeprecation("kuma.io/builtindns", KumaBuiltinDNS, true),
 	NewReplaceByDeprecation("kuma.io/builtindnsport", KumaBuiltinDNSPort, true),
+	NewDeprecation(KumaVirtualProbesAnnotation, false),
+	NewReplaceByDeprecation(KumaVirtualProbesPortAnnotation, KumaApplicationProbeProxyPortAnnotation, false),
 	{
 		Key:     KumaSidecarInjectionAnnotation,
 		Message: "WARNING: you are using kuma.io/sidecar-injection as annotation. This is not supported you should use it as a label instead",
@@ -142,6 +161,17 @@ func NewReplaceByDeprecation(old, new string, removed bool) Deprecation {
 	}
 }
 
+func NewDeprecation(old string, removed bool) Deprecation {
+	msg := fmt.Sprintf("'%s' will be removed in a future release", old)
+	if removed {
+		msg = fmt.Sprintf("'%s' is no longer supported and it will be ignored, please see documentation on how to migrate", old)
+	}
+	return Deprecation{
+		Key:     old,
+		Message: msg,
+	}
+}
+
 // Annotations that are being automatically set by the Kuma Sidecar Injector.
 const (
 	KumaSidecarInjectedAnnotation                      = "kuma.io/sidecar-injected"
@@ -150,10 +180,10 @@ const (
 	KumaEnvoyAdminPort                                 = "kuma.io/envoy-admin-port"
 	KumaTransparentProxyingAnnotation                  = "kuma.io/transparent-proxying"
 	KumaTransparentProxyingInboundPortAnnotation       = "kuma.io/transparent-proxying-inbound-port"
-	KumaTransparentProxyingInboundPortAnnotationV6     = "kuma.io/transparent-proxying-inbound-v6-port"
 	KumaTransparentProxyingIPFamilyMode                = "kuma.io/transparent-proxying-ip-family-mode"
 	KumaTransparentProxyingOutboundPortAnnotation      = "kuma.io/transparent-proxying-outbound-port"
 	KumaTransparentProxyingReachableServicesAnnotation = "kuma.io/transparent-proxying-reachable-services"
+	KumaReachableBackends                              = "kuma.io/reachable-backends"
 	CNCFNetworkAnnotation                              = "k8s.v1.cni.cncf.io/networks"
 	KumaCNI                                            = "kuma-cni"
 	KumaTransparentProxyingEbpf                        = "kuma.io/transparent-proxying-ebpf"

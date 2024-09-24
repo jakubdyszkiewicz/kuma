@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/vishvananda/netlink"
 
 	"github.com/kumahq/kuma/pkg/transparentproxy/config"
+	"github.com/kumahq/kuma/pkg/transparentproxy/consts"
 	"github.com/kumahq/kuma/pkg/transparentproxy/iptables/builder"
-	"github.com/kumahq/kuma/pkg/transparentproxy/iptables/consts"
 	"github.com/kumahq/kuma/test/blackbox_network_tests"
 	"github.com/kumahq/kuma/test/framework/network/ip"
 	"github.com/kumahq/kuma/test/framework/network/netns"
@@ -39,18 +38,19 @@ var _ = Describe("Outbound IPv4 TCP traffic to any address:port", func() {
 		func(serverPort, randomPort uint16) {
 			// given
 			address := fmt.Sprintf(":%d", serverPort)
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 					Outbound: config.TrafficFlow{
 						Enabled: true,
-						Port:    serverPort,
+						Port:    config.Port(serverPort),
 					},
 				},
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -117,19 +117,20 @@ var _ = Describe("Outbound IPv6 TCP traffic to any address:port", func() {
 		func(serverPort, randomPort uint16) {
 			// given
 			address := fmt.Sprintf(":%d", serverPort)
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled: true,
-						Port:    serverPort,
+						Port:    config.Port(serverPort),
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
-				IPv6:          true,
+				IPFamilyMode:  config.IPFamilyModeDualStack,
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -208,22 +209,23 @@ var _ = Describe("Outbound IPv4 TCP traffic to any address:port except excluded 
 		func(serverPort, randomPort, excludedPort uint16) {
 			// given
 
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled:      true,
-						Port:         serverPort,
-						ExcludePorts: []uint16{excludedPort},
+						Port:         config.Port(serverPort),
+						ExcludePorts: config.Ports{config.Port(excludedPort)},
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
 				RuntimeStdout: io.Discard,
-				Log: config.LogConfig{
+				Log: config.Log{
 					Enabled: true,
 				},
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -320,23 +322,22 @@ var _ = Describe("Outbound IPv4 TCP traffic to any address:port except ports exc
 			// given
 			dnsUserUid := uintptr(4201) // see /.github/workflows/blackbox-tests.yaml:76
 
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled: true,
-						Port:    serverPort,
-						ExcludePortsForUIDs: []config.UIDsToPorts{{
-							UIDs:     config.ValueOrRangeList(strconv.Itoa(int(dnsUserUid))),
-							Ports:    config.ValueOrRangeList(strconv.Itoa(int(excludedPort))),
-							Protocol: "tcp",
-						}},
+						Port:    config.Port(serverPort),
+						ExcludePortsForUIDs: []string{
+							fmt.Sprintf("tcp:%d:%d", excludedPort, dnsUserUid),
+						},
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -430,23 +431,24 @@ var _ = Describe("Outbound IPv6 TCP traffic to any address:port except excluded 
 	DescribeTable("should be redirected to outbound port",
 		func(serverPort, randomPort, excludedPort uint16) {
 			// given
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled:      true,
-						Port:         serverPort,
-						ExcludePorts: []uint16{excludedPort},
+						Port:         config.Port(serverPort),
+						ExcludePorts: config.Ports{config.Port(excludedPort)},
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
-				IPv6:          true,
+				IPFamilyMode:  config.IPFamilyModeDualStack,
 				RuntimeStdout: io.Discard,
-				Log: config.LogConfig{
+				Log: config.Log{
 					Enabled: true,
 				},
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -530,20 +532,21 @@ var _ = Describe("Outbound IPv4 TCP traffic only to included port", func() {
 		func(serverPort, includedPort, randomPort uint16) {
 			// given
 
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled:      true,
-						Port:         serverPort,
-						IncludePorts: []uint16{includedPort},
-						ExcludePorts: []uint16{includedPort},
+						Port:         config.Port(serverPort),
+						IncludePorts: config.Ports{config.Port(includedPort)},
+						ExcludePorts: config.Ports{config.Port(includedPort)},
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -626,21 +629,22 @@ var _ = Describe("Outbound IPv6 TCP traffic only to included port", func() {
 	DescribeTable("should be redirected to outbound port",
 		func(serverPort, includedPort, randomPort uint16) {
 			// given
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled:      true,
-						Port:         serverPort,
-						IncludePorts: []uint16{includedPort},
-						ExcludePorts: []uint16{includedPort},
+						Port:         config.Port(serverPort),
+						IncludePorts: config.Ports{config.Port(includedPort)},
+						ExcludePorts: config.Ports{config.Port(includedPort)},
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
-				IPv6:          true,
+				IPFamilyMode:  config.IPFamilyModeDualStack,
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -724,18 +728,19 @@ var _ = Describe("Outbound IPv4 TCP traffic to any address:port", func() {
 		func(serverPort, randomPort uint16) {
 			// given
 			address := fmt.Sprintf(":%d", randomPort)
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled: false,
-						Port:    serverPort,
+						Port:    config.Port(serverPort),
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -800,19 +805,20 @@ var _ = Describe("Outbound IPv6 TCP traffic to any address:port", func() {
 		func(serverPort, randomPort uint16) {
 			// given
 			address := fmt.Sprintf(":%d", randomPort)
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled: false,
-						Port:    serverPort,
+						Port:    config.Port(serverPort),
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
-				IPv6:          true,
+				IPFamilyMode:  config.IPFamilyModeDualStack,
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -890,24 +896,23 @@ var _ = Describe("Outbound IPv6 TCP traffic to any address:port except ports exc
 			// given
 			dnsUserUid := uintptr(4201) // see /.github/workflows/blackbox-tests.yaml:76
 
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled: true,
-						Port:    serverPort,
-						ExcludePortsForUIDs: []config.UIDsToPorts{{
-							UIDs:     config.ValueOrRangeList(strconv.Itoa(int(dnsUserUid))),
-							Ports:    config.ValueOrRangeList(strconv.Itoa(int(excludedPort))),
-							Protocol: "tcp",
-						}},
+						Port:    config.Port(serverPort),
+						ExcludePortsForUIDs: []string{
+							fmt.Sprintf("tcp:%d:%d", excludedPort, dnsUserUid),
+						},
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
 					},
 				},
-				IPv6:          true,
+				IPFamilyMode:  config.IPFamilyModeDualStack,
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns,
@@ -1001,11 +1006,11 @@ var _ = Describe("Outbound IPv4 TCP traffic from specific interface to other ip 
 	DescribeTable("should be redirected to outbound port",
 		func(serverPort, randomPort uint16) {
 			// given
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled: true,
-						Port:    serverPort,
+						Port:    config.Port(serverPort),
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
@@ -1015,7 +1020,8 @@ var _ = Describe("Outbound IPv4 TCP traffic from specific interface to other ip 
 					},
 				},
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns2,
@@ -1091,11 +1097,11 @@ var _ = Describe("Outbound IPv6 TCP traffic from specific interface to other ip 
 	DescribeTable("should be redirected to outbound port",
 		func(serverPort, randomPort uint16) {
 			// given
-			tproxyConfig := config.Config{
+			tproxyConfig, err := config.Config{
 				Redirect: config.Redirect{
 					Outbound: config.TrafficFlow{
 						Enabled: true,
-						Port:    serverPort,
+						Port:    config.Port(serverPort),
 					},
 					Inbound: config.TrafficFlow{
 						Enabled: true,
@@ -1104,9 +1110,10 @@ var _ = Describe("Outbound IPv6 TCP traffic from specific interface to other ip 
 						Networks: []string{"s-peer+:fd00::10:1:1/128"},
 					},
 				},
-				IPv6:          true,
+				IPFamilyMode:  config.IPFamilyModeDualStack,
 				RuntimeStdout: io.Discard,
-			}
+			}.Initialize(context.Background())
+			Expect(err).ToNot(HaveOccurred())
 
 			tcpReadyC, tcpErrC := tcp.UnsafeStartTCPServer(
 				ns2,

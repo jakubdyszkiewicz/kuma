@@ -9,6 +9,7 @@ import (
 
 	"github.com/kumahq/kuma/pkg/config/core"
 	"github.com/kumahq/kuma/test/framework"
+	"github.com/kumahq/kuma/test/framework/utils"
 )
 
 var Cluster *framework.K8sCluster
@@ -25,10 +26,11 @@ func SetupAndGetState() []byte {
 
 	kumaOptions := append(
 		[]framework.KumaDeploymentOption{
-			framework.WithCtlOpts(map[string]string{
-				"--experimental-gatewayapi": "true",
-			}),
 			framework.WithEgress(),
+			framework.WithEgressEnvoyAdminTunnel(),
+			framework.WithCtlOpts(map[string]string{
+				"--set": "controlPlane.supportGatewaySecretsInAllNamespaces=true", // needed for test/e2e_env/kubernetes/gateway/gatewayapi.go:470
+			}),
 		},
 		framework.KumaDeploymentOptionsFromConfig(framework.Config.KumaCpConfig.Standalone.Kubernetes)...,
 	)
@@ -41,8 +43,9 @@ func SetupAndGetState() []byte {
 	}, "90s", "3s").Should(Succeed())
 
 	state := framework.K8sNetworkingState{
-		KumaCp: Cluster.GetKuma().(*framework.K8sControlPlane).PortFwd(),
-		MADS:   Cluster.GetKuma().(*framework.K8sControlPlane).MadsPortFwd(),
+		KumaCp:     Cluster.GetKuma().(*framework.K8sControlPlane).PortFwd(),
+		MADS:       Cluster.GetKuma().(*framework.K8sControlPlane).MadsPortFwd(),
+		ZoneEgress: Cluster.GetPortForward(framework.Config.ZoneEgressApp),
 	}
 
 	bytes, err := json.Marshal(state)
@@ -76,6 +79,7 @@ func RestoreState(bytes []byte) {
 	)
 	Expect(cp.FinalizeAddWithPortFwd(state.KumaCp, state.MADS)).To(Succeed())
 	Cluster.SetCP(cp)
+	Expect(Cluster.AddPortForward(state.ZoneEgress, framework.Config.ZoneEgressApp)).To(Succeed())
 }
 
 func PrintCPLogsOnFailure(report ginkgo.Report) {
@@ -96,4 +100,23 @@ func PrintKubeState(report ginkgo.Report) {
 			framework.Logf("could not retrieve kube pods")
 		}
 	}
+}
+
+func ExpectCpToNotPanic() {
+	logs, err := Cluster.GetKumaCPLogs()
+	if err != nil {
+		framework.Logf("could not retrieve cp logs")
+	} else {
+		Expect(utils.HasPanicInCpLogs(logs)).To(BeFalse())
+	}
+}
+
+func SynchronizedAfterSuite() {
+	Expect(framework.CpRestarted(Cluster)).To(BeFalse(), "CP restarted in this suite, this should not happen.")
+	ExpectCpToNotPanic()
+}
+
+func AfterSuite(report ginkgo.Report) {
+	PrintCPLogsOnFailure(report)
+	PrintKubeState(report)
 }

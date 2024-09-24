@@ -28,13 +28,11 @@ import (
 	"github.com/kumahq/kuma/pkg/insights/globalinsight"
 	"github.com/kumahq/kuma/pkg/intercp/client"
 	kds_context "github.com/kumahq/kuma/pkg/kds/context"
-	"github.com/kumahq/kuma/pkg/kds/reconcile"
-	kds_server "github.com/kumahq/kuma/pkg/kds/server"
+	reconcile_v2 "github.com/kumahq/kuma/pkg/kds/v2/reconcile"
 	kds_server_v2 "github.com/kumahq/kuma/pkg/kds/v2/server"
 	core_metrics "github.com/kumahq/kuma/pkg/metrics"
 	"github.com/kumahq/kuma/pkg/multitenant"
 	"github.com/kumahq/kuma/pkg/plugins/resources/postgres/config"
-	test_runtime "github.com/kumahq/kuma/pkg/test/runtime"
 	"github.com/kumahq/kuma/pkg/tokens/builtin"
 	"github.com/kumahq/kuma/pkg/xds/cache/mesh"
 	xds_runtime "github.com/kumahq/kuma/pkg/xds/runtime"
@@ -42,7 +40,7 @@ import (
 )
 
 type testRuntimeContext struct {
-	test_runtime.TestRuntimeInfo
+	runtime.RuntimeInfo
 	rom                      manager.ReadOnlyResourceManager
 	rm                       manager.ResourceManager
 	cfg                      kuma_cp.Config
@@ -205,8 +203,8 @@ func (t *testRuntimeContext) Add(c ...component.Component) error {
 
 type KdsServerBuilder struct {
 	rt             *testRuntimeContext
-	providedMapper reconcile.ResourceMapper
-	providedFilter reconcile.ResourceFilter
+	providedMapper reconcile_v2.ResourceMapper
+	providedFilter reconcile_v2.ResourceFilter
 	providedTypes  []model.ResourceType
 }
 
@@ -222,12 +220,10 @@ func NewKdsServerBuilder(store store.ResourceStore) *KdsServerBuilder {
 	}
 	cfg := kuma_cp.DefaultConfig()
 	cfg.Mode = config_core.Global
+	runtimeInfo := runtime.NewRuntimeInfo("global-cp", cfg.Mode)
+	runtimeInfo.SetClusterInfo("my-cluster", time.Now())
 	rt := &testRuntimeContext{
-		TestRuntimeInfo: test_runtime.TestRuntimeInfo{
-			InstanceId: "global-cp",
-			ClusterId:  "my-cluster",
-			Mode:       cfg.Mode,
-		},
+		RuntimeInfo:              runtimeInfo,
 		rom:                      rm,
 		rm:                       rm,
 		cfg:                      cfg,
@@ -238,16 +234,16 @@ func NewKdsServerBuilder(store store.ResourceStore) *KdsServerBuilder {
 	}
 	return &KdsServerBuilder{
 		rt:             rt,
-		providedMapper: reconcile.NoopResourceMapper,
+		providedMapper: reconcile_v2.NoopResourceMapper,
 		providedTypes:  registry.Global().ObjectTypes(model.HasKdsEnabled()),
-		providedFilter: reconcile.Any,
+		providedFilter: reconcile_v2.Any,
 	}
 }
 
 func (b *KdsServerBuilder) AsZone(name string) *KdsServerBuilder {
 	b.rt.cfg.Multizone.Zone.Name = name
-	b.rt.TestRuntimeInfo.InstanceId = name
 	b.rt.cfg.Mode = config_core.Zone
+	b.rt.RuntimeInfo = runtime.NewRuntimeInfo("zone-cp", b.rt.cfg.Mode)
 	return b
 }
 
@@ -260,10 +256,6 @@ func (b *KdsServerBuilder) WithKdsContext(kctx *kds_context.Context) *KdsServerB
 func (b *KdsServerBuilder) WithTypes(types []model.ResourceType) *KdsServerBuilder {
 	b.providedTypes = types
 	return b
-}
-
-func (b *KdsServerBuilder) Sotw() (kds_server.Server, error) {
-	return kds_server.New(core.Log.WithName("kds").WithName(b.rt.GetMode()), b.rt, b.providedTypes, b.rt.Config().Multizone.Zone.Name, 100*time.Millisecond, b.providedFilter, b.providedMapper, 1*time.Second)
 }
 
 func (b *KdsServerBuilder) Delta() (kds_server_v2.Server, error) {

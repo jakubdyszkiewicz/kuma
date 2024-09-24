@@ -25,9 +25,11 @@ dynamicResources:
     transportApiVersion: V3
   cdsConfig:
     ads: {}
+    initialFetchTimeout: 0s
     resourceApiVersion: V3
   ldsConfig:
     ads: {}
+    initialFetchTimeout: 0s
     resourceApiVersion: V3
 hdsConfig:
   apiType: GRPC
@@ -49,7 +51,6 @@ node:
   cluster: backend
   id: mesh.name.namespace
   metadata:
-    accessLogSocketPath: /tmp/kuma-al-name.namespace-mesh.sock
     dataplane.admin.address: 192.168.0.1
     dataplane.admin.port: "1234"
     dataplane.proxyType: dataplane
@@ -83,7 +84,7 @@ node:
     features: []
     metricsCertPath: ""
     metricsKeyPath: ""
-    metricsSocketPath: /tmp/kuma-mh-name.namespace-mesh.sock
+    systemCaPath: ""
     version:
       envoy:
         build: hash/1.15.0/RELEASE
@@ -93,7 +94,7 @@ node:
         gitCommit: 91ce236824a9d875601679aa80c63783fb0e8725
         gitTag: v0.0.1
         version: 0.0.1
-    workdir: ""
+    workdir: /tmp
 staticResources:
   clusters:
   - connectTimeout: 2s

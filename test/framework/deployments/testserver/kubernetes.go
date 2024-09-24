@@ -23,7 +23,8 @@ func (k *k8SDeployment) Name() string {
 
 func (k *k8SDeployment) service() *corev1.Service {
 	appProtocol := k.opts.protocol
-	if len(k.opts.healthcheckTCPArgs) > 0 || k.opts.tlsKey != "" {
+	isTcpHealthCheck := len(k.opts.args) >= 2 && k.opts.args[0] == "health-check" && k.opts.args[1] == "tcp"
+	if isTcpHealthCheck || k.opts.tlsKey != "" {
 		appProtocol = "tcp"
 	}
 	servicePort := 80
@@ -38,6 +39,9 @@ func (k *k8SDeployment) service() *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      k.Name(),
 			Namespace: k.opts.Namespace,
+			Labels: map[string]string{
+				"kuma.io/mesh": k.opts.Mesh,
+			},
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -53,6 +57,12 @@ func (k *k8SDeployment) service() *corev1.Service {
 			},
 		},
 	}
+}
+
+func (k *k8SDeployment) headlessService() *corev1.Service {
+	svc := k.service()
+	svc.Spec.ClusterIP = corev1.ClusterIPNone
+	return svc
 }
 
 func (k *k8SDeployment) serviceAccount() *corev1.ServiceAccount {
@@ -111,31 +121,27 @@ func (k *k8SDeployment) statefulSet() *appsv1.StatefulSet {
 
 func (k *k8SDeployment) podSpec() corev1.PodTemplateSpec {
 	var args []string
-	var liveness *corev1.Probe
-	var readiness *corev1.Probe
+	var livenessProbe *corev1.Probe
+	var readinessProbe *corev1.Probe
+	var startupProbe *corev1.Probe
 	var volumeMounts []corev1.VolumeMount
 	var volumes []corev1.Volume
 	switch {
-	case len(k.opts.healthcheckTCPArgs) > 0:
-		args = k.opts.healthcheckTCPArgs
-		liveness = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(80),
-				},
-			},
-			InitialDelaySeconds: 3,
-			PeriodSeconds:       3,
+	case len(k.opts.args) > 0:
+		args = k.opts.args
+		if len(k.opts.probes) > 0 {
+			for _, probe := range k.opts.probes {
+				switch probe.ProbeType {
+				case ReadinessProbe:
+					readinessProbe = probe.toKubeProbe()
+				case LivenessProbe:
+					livenessProbe = probe.toKubeProbe()
+				case StartupProbe:
+					startupProbe = probe.toKubeProbe()
+				}
+			}
 		}
-		readiness = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(80),
-				},
-			},
-			InitialDelaySeconds: 3,
-			PeriodSeconds:       3,
-		}
+
 	case k.opts.tlsKey != "":
 		args = append([]string{"echo", "--port", "443", "--tls", "--key", "/etc/tls/tls.key", "--crt", "/etc/tls/tls.crt"}, k.opts.echoArgs...)
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
@@ -153,11 +159,11 @@ func (k *k8SDeployment) podSpec() corev1.PodTemplateSpec {
 		})
 	default:
 		args = append([]string{"echo", "--port", "80", "--probes"}, k.opts.echoArgs...)
-		liveness = &corev1.Probe{
+		livenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Path: `/probes?type=liveness`,
-					Port: intstr.FromInt(80),
+					Port: intstr.FromInt32(80),
 				},
 			},
 			InitialDelaySeconds: 3,
@@ -165,11 +171,11 @@ func (k *k8SDeployment) podSpec() corev1.PodTemplateSpec {
 			TimeoutSeconds:      3,
 			FailureThreshold:    60,
 		}
-		readiness = &corev1.Probe{
+		readinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Path: `/probes?type=readiness`,
-					Port: intstr.FromInt(80),
+					Port: intstr.FromInt32(80),
 				},
 			},
 			InitialDelaySeconds: 3,
@@ -179,8 +185,9 @@ func (k *k8SDeployment) podSpec() corev1.PodTemplateSpec {
 		}
 	}
 	if !k.opts.EnableProbes {
-		liveness = nil
-		readiness = nil
+		livenessProbe = nil
+		readinessProbe = nil
+		startupProbe = nil
 	}
 	containerPort := 80
 	if k.opts.tlsKey != "" {
@@ -198,8 +205,9 @@ func (k *k8SDeployment) podSpec() corev1.PodTemplateSpec {
 				{
 					Name:            k.Name(),
 					ImagePullPolicy: "IfNotPresent",
-					ReadinessProbe:  readiness,
-					LivenessProbe:   liveness,
+					ReadinessProbe:  readinessProbe,
+					LivenessProbe:   livenessProbe,
+					StartupProbe:    startupProbe,
 					Image:           framework.Config.GetUniversalImage(),
 					Ports: []corev1.ContainerPort{
 						{
@@ -241,6 +249,9 @@ func (k *k8SDeployment) podSpec() corev1.PodTemplateSpec {
 	spec.Spec.InitContainers = append(spec.Spec.InitContainers, k.opts.initContainersToAdd...)
 	if len(k.opts.ReachableServices) > 0 {
 		spec.ObjectMeta.Annotations["kuma.io/transparent-proxying-reachable-services"] = strings.Join(k.opts.ReachableServices, ",")
+	}
+	if k.opts.ReachableBackends != "" {
+		spec.ObjectMeta.Annotations["kuma.io/reachable-backends"] = k.opts.ReachableBackends
 	}
 	return spec
 }
@@ -305,7 +316,11 @@ func (k *k8SDeployment) Deploy(cluster framework.Cluster) error {
 		funcs = append(funcs, framework.YamlK8sObject(k.deployment()))
 	}
 	if k.opts.EnableService {
-		funcs = append(funcs, framework.YamlK8sObject(k.service()))
+		if k.opts.HeadlessService {
+			funcs = append(funcs, framework.YamlK8sObject(k.headlessService()))
+		} else {
+			funcs = append(funcs, framework.YamlK8sObject(k.service()))
+		}
 	}
 	if k.opts.WaitingToBeReady {
 		funcs = append(funcs,

@@ -3,6 +3,7 @@ package gatewayapi
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	kube_core "k8s.io/api/core/v1"
@@ -10,7 +11,6 @@ import (
 	kube_apimeta "k8s.io/apimachinery/pkg/api/meta"
 	kube_meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kube_types "k8s.io/apimachinery/pkg/types"
-	kube_client "sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayapi_v1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayapi "sigs.k8s.io/gateway-api/apis/v1beta1"
 
@@ -18,7 +18,7 @@ import (
 	system_proto "github.com/kumahq/kuma/api/system/v1alpha1"
 	mesh_k8s "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/api/v1alpha1"
 	"github.com/kumahq/kuma/pkg/plugins/runtime/k8s/controllers/gatewayapi/common"
-	referencegrants "github.com/kumahq/kuma/pkg/plugins/runtime/k8s/controllers/gatewayapi/referencegrants"
+	"github.com/kumahq/kuma/pkg/plugins/runtime/k8s/controllers/gatewayapi/referencegrants"
 	"github.com/kumahq/kuma/pkg/util/pointer"
 )
 
@@ -183,6 +183,7 @@ func (r *GatewayReconciler) gapiToKumaGateway(
 				// gateway-api routes are configured using direct references to
 				// Gateways, so just create a tag specifically for this listener
 				mesh_proto.ListenerTag: string(l.Name),
+				mesh_proto.PortTag:     strconv.Itoa(int(l.Port)),
 			},
 			CrossMesh: config.CrossMesh,
 		}
@@ -241,7 +242,9 @@ func (r *GatewayReconciler) gapiToKumaGateway(
 	var kumaGateway *mesh_proto.MeshGateway
 
 	if len(listeners) > 0 {
-		match := common.ServiceTagForGateway(kube_client.ObjectKeyFromObject(gateway))
+		match := map[string]string{
+			mesh_proto.ServiceTag: fmt.Sprintf("%s_%s_svc", gateway.Name, gateway.Namespace),
+		}
 
 		kumaGateway = &mesh_proto.MeshGateway{
 			Selectors: []*mesh_proto.Selector{

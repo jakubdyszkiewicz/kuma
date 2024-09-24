@@ -9,6 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/kumahq/kuma/pkg/plugins/policies/meshaccesslog/api/v1alpha1"
 	"github.com/kumahq/kuma/test/framework"
@@ -47,6 +48,10 @@ func MeshAccessLog(config *Config) func() {
 
 			return logs
 		}
+
+		framework.AfterEachFailure(func() {
+			framework.DebugKube(kubernetes.Cluster, config.Mesh, config.Namespace, config.ObservabilityDeploymentName)
+		})
 
 		framework.E2EAfterEach(func() {
 			Expect(framework.DeleteMeshResources(
@@ -108,12 +113,12 @@ spec:
 				)
 				g.Expect(err).ToNot(HaveOccurred())
 
-				logs, err := kubernetes.Cluster.GetPodLogs(demoClientPod)
+				logs, err := kubernetes.Cluster.GetPodLogs(demoClientPod, v1.PodLogOptions{})
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(parseLogs(logs)).To(ContainElement(
 					And(
 						HaveField("Start", WithTransform(parseTimestamp, BeTemporally("~", time.Now(), time.Hour))),
-						HaveField("Source", fmt.Sprintf("delegated-gateway-admin_%s_svc_8444", config.Namespace)),
+						HaveField("Source", fmt.Sprintf("%s-gateway-admin_%s_svc_8444", config.Mesh, config.Namespace)),
 						HaveField("Destination", fmt.Sprintf("test-server_%s_svc_80", config.Namespace)),
 					),
 				))

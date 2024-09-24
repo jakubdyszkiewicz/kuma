@@ -77,6 +77,7 @@ func inboundForService(zone string, pod *kube_core.Pod, service *kube_core.Servi
 
 		ifaces = append(ifaces, &mesh_proto.Dataplane_Networking_Inbound{
 			Port:   uint32(containerPort),
+			Name:   svcPort.Name,
 			Tags:   tags,
 			State:  state,
 			Health: &health, // write health for backwards compatibility with Kuma 2.5 and older
@@ -150,9 +151,6 @@ func (i *InboundConverter) InboundInterfacesFor(ctx context.Context, zone string
 	}
 
 	if len(ifaces) == 0 {
-		if len(services) > 0 {
-			return nil, errors.Errorf("A service that selects pod %s was found, but it doesn't match any container ports.", pod.GetName())
-		}
 		name, _, err := i.NameExtractor.Name(ctx, pod)
 		if err != nil {
 			return nil, err

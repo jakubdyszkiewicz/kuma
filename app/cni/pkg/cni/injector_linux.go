@@ -15,6 +15,7 @@ import (
 	"github.com/kumahq/kuma/pkg/transparentproxy/config"
 )
 
+// Deprecated
 func convertToUint16(field string, value string) (uint16, error) {
 	converted, err := strconv.ParseUint(value, 10, 16)
 	if err != nil {
@@ -23,22 +24,24 @@ func convertToUint16(field string, value string) (uint16, error) {
 	return uint16(converted), nil
 }
 
-func convertCommaSeparatedString(list string) ([]uint16, error) {
+// Deprecated
+func convertCommaSeparatedString(list string) (config.Ports, error) {
 	split := strings.Split(list, ",")
-	mapped := make([]uint16, len(split))
+	mapped := make(config.Ports, len(split))
 
 	for i, value := range split {
 		converted, err := convertToUint16(strconv.Itoa(i), value)
 		if err != nil {
 			return nil, err
 		}
-		mapped[i] = converted
+		mapped[i] = config.Port(converted)
 	}
 
 	return mapped, nil
 }
 
-func Inject(netns string, logger logr.Logger, intermediateConfig *IntermediateConfig) error {
+// Deprecated
+func legacyInjectIptables(ctx context.Context, netns string, intermediateConfig *IntermediateConfig, logger logr.Logger) error {
 	var logBuffer bytes.Buffer
 	logWriter := bufio.NewWriter(&logBuffer)
 	cfg, err := mapToConfig(intermediateConfig, logWriter)
@@ -53,7 +56,12 @@ func Inject(netns string, logger logr.Logger, intermediateConfig *IntermediateCo
 	defer namespace.Close()
 
 	return namespace.Do(func(_ ns.NetNS) error {
-		if _, err := transparentproxy.Setup(context.Background(), *cfg); err != nil {
+		initializedConfig, err := cfg.Initialize(ctx)
+		if err != nil {
+			return errors.Wrap(err, "failed to initialize config")
+		}
+
+		if _, err := transparentproxy.Setup(ctx, initializedConfig); err != nil {
 			return err
 		}
 
@@ -68,39 +76,44 @@ func Inject(netns string, logger logr.Logger, intermediateConfig *IntermediateCo
 	})
 }
 
+// Deprecated
 func mapToConfig(intermediateConfig *IntermediateConfig, logWriter *bufio.Writer) (*config.Config, error) {
-	port, err := convertToUint16("inbound port", intermediateConfig.targetPort)
-	if err != nil {
-		return nil, err
-	}
+	cfg := config.DefaultConfig()
+
 	excludePorts, err := convertCommaSeparatedString(intermediateConfig.excludeOutboundPorts)
 	if err != nil {
 		return nil, err
 	}
 
-	excludePortsForUIDs := []string{}
+	var excludePortsForUIDs []string
 	if intermediateConfig.excludeOutboundPortsForUIDs != "" {
 		excludePortsForUIDs = strings.Split(intermediateConfig.excludeOutboundPortsForUIDs, ";")
 	}
 
-	excludePortsForUIDsParsed, err := transparentproxy.ParseExcludePortsForUIDs(excludePortsForUIDs)
+	cfg.CNIMode = true
+	cfg.Verbose = true
+	cfg.RuntimeStdout = logWriter
+	cfg.KumaDPUser = intermediateConfig.noRedirectUID
+	cfg.Redirect.Outbound.Enabled = true
+	cfg.Redirect.Outbound.ExcludePorts = excludePorts
+	cfg.Redirect.Outbound.ExcludePortsForUIDs = excludePortsForUIDs
+
+	if err := cfg.Redirect.Outbound.Port.Set(intermediateConfig.targetPort); err != nil {
+		return nil, errors.Wrapf(err, "failed to set outbound port to '%s'", intermediateConfig.targetPort)
+	}
+
+	if intermediateConfig.excludeOutboundIPs != "" {
+		cfg.Redirect.Outbound.ExcludePortsForIPs = strings.Split(intermediateConfig.excludeOutboundIPs, ",")
+	}
+
+	cfg.DropInvalidPackets, err = GetEnabled(intermediateConfig.dropInvalidPackets)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg := config.Config{
-		RuntimeStdout: logWriter,
-		Owner: config.Owner{
-			UID: intermediateConfig.noRedirectUID,
-		},
-		Redirect: config.Redirect{
-			Outbound: config.TrafficFlow{
-				Enabled:             true,
-				Port:                port,
-				ExcludePorts:        excludePorts,
-				ExcludePortsForUIDs: excludePortsForUIDsParsed,
-			},
-		},
+	cfg.Log.Enabled, err = GetEnabled(intermediateConfig.iptablesLogs)
+	if err != nil {
+		return nil, err
 	}
 
 	isGateway, err := GetEnabled(intermediateConfig.isGateway)
@@ -108,58 +121,45 @@ func mapToConfig(intermediateConfig *IntermediateConfig, logWriter *bufio.Writer
 		return nil, err
 	}
 
-	var inboundPortV6 uint16
-	if intermediateConfig.ipFamilyMode == "ipv4" {
-		inboundPortV6 = 0
-	} else {
-		inboundPortV6, err = convertToUint16("inbound port ipv6", intermediateConfig.inboundPortV6)
-		if err != nil {
-			return nil, err
-		}
-	}
-	enableIpV6, err := transparentproxy.ShouldEnableIPv6(inboundPortV6)
-	if err != nil {
+	if err := cfg.IPFamilyMode.Set(intermediateConfig.ipFamilyMode); err != nil {
 		return nil, err
 	}
-	cfg.IPv6 = enableIpV6
-	redirectInbound := !isGateway
-	if redirectInbound {
-		inboundPort, err := convertToUint16("inbound port", intermediateConfig.inboundPort)
-		if err != nil {
-			return nil, err
+
+	cfg.Redirect.Inbound.Enabled = !isGateway
+	if cfg.Redirect.Inbound.Enabled {
+		if err := cfg.Redirect.Inbound.Port.Set(intermediateConfig.inboundPort); err != nil {
+			return nil, errors.Wrapf(err, "failed to set inbound port to '%s'", intermediateConfig.inboundPort)
 		}
 
 		excludedPorts, err := convertCommaSeparatedString(intermediateConfig.excludeInboundPorts)
 		if err != nil {
 			return nil, err
 		}
-		cfg.Redirect.Inbound = config.TrafficFlow{
-			Enabled:      true,
-			Port:         inboundPort,
-			PortIPv6:     inboundPortV6,
-			ExcludePorts: excludedPorts,
+
+		cfg.Redirect.Inbound.ExcludePorts = excludedPorts
+
+		if intermediateConfig.excludeInboundIPs != "" {
+			cfg.Redirect.Inbound.ExcludePortsForIPs = strings.Split(intermediateConfig.excludeInboundIPs, ",")
 		}
 	}
 
-	useBuiltinDNS, err := GetEnabled(intermediateConfig.builtinDNS)
+	cfg.Redirect.DNS.Enabled, err = GetEnabled(intermediateConfig.builtinDNS)
 	if err != nil {
 		return nil, err
 	}
-	if useBuiltinDNS {
-		builtinDnsPort, err := convertToUint16("builtin dns port", intermediateConfig.builtinDNSPort)
-		if err != nil {
-			return nil, err
+	if cfg.Redirect.DNS.Enabled {
+		if err := cfg.Redirect.DNS.Port.Set(intermediateConfig.builtinDNSPort); err != nil {
+			return nil, errors.Wrapf(err, "failed to set builtin dns port to '%s'", intermediateConfig.builtinDNSPort)
 		}
-		cfg.Redirect.DNS = config.DNS{
-			Enabled:            true,
-			Port:               builtinDnsPort,
-			CaptureAll:         true,
-			ConntrackZoneSplit: true,
-		}
+
+		cfg.Redirect.DNS.CaptureAll = true
+		cfg.Redirect.DNS.SkipConntrackZoneSplit = false
 	}
+
 	return &cfg, nil
 }
 
+// Deprecated
 func GetEnabled(value string) (bool, error) {
 	switch strings.ToLower(value) {
 	case "enabled", "true":
@@ -169,4 +169,25 @@ func GetEnabled(value string) (bool, error) {
 	default:
 		return false, errors.Errorf(`wrong value "%s", available values are: "enabled", "disabled", "true", "false"`, value)
 	}
+}
+
+func injectIptables(ctx context.Context, netns string, cfg config.Config) error {
+	namespace, err := ns.GetNS(netns)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open network namespace '%s'", netns)
+	}
+	defer namespace.Close()
+
+	return namespace.Do(func(ns.NetNS) error {
+		initializedConfig, err := cfg.Initialize(ctx)
+		if err != nil {
+			return errors.Wrap(err, "failed to initialize transparent proxy configuration")
+		}
+
+		if _, err := transparentproxy.Setup(ctx, initializedConfig); err != nil {
+			return errors.Wrap(err, "failed to set up transparent proxy")
+		}
+
+		return nil
+	})
 }

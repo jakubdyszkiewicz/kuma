@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/kumahq/kuma/pkg/plugins/policies/meshcircuitbreaker/api/v1alpha1"
-	meshretry_api "github.com/kumahq/kuma/pkg/plugins/policies/meshretry/api/v1alpha1"
 	"github.com/kumahq/kuma/test/framework"
 	"github.com/kumahq/kuma/test/framework/client"
 	"github.com/kumahq/kuma/test/framework/envs/kubernetes"
@@ -17,17 +16,8 @@ func CircuitBreaker(config *Config) func() {
 	GinkgoHelper()
 
 	return func() {
-		BeforeAll(func() {
-			Expect(framework.DeleteMeshPolicyOrError(
-				kubernetes.Cluster,
-				v1alpha1.MeshCircuitBreakerResourceTypeDescriptor,
-				fmt.Sprintf("mesh-circuit-breaker-all-%s", config.Mesh),
-			)).To(Succeed())
-			Expect(framework.DeleteMeshPolicyOrError(
-				kubernetes.Cluster,
-				meshretry_api.MeshRetryResourceTypeDescriptor,
-				fmt.Sprintf("mesh-retry-all-%s", config.Mesh),
-			)).To(Succeed())
+		framework.AfterEachFailure(func() {
+			framework.DebugKube(kubernetes.Cluster, config.Mesh, config.Namespace, config.ObservabilityDeploymentName)
 		})
 
 		framework.E2EAfterEach(func() {
@@ -84,7 +74,7 @@ func CircuitBreaker(config *Config) func() {
 apiVersion: kuma.io/v1alpha1
 kind: MeshCircuitBreaker
 metadata:
-  name: mcb-outbound
+  name: mcb-outbound-delegated
   namespace: %s
   labels:
     kuma.io/mesh: %s
@@ -92,28 +82,6 @@ spec:
   targetRef:
     kind: Mesh
   to:
-    - targetRef:
-        kind: Mesh
-      default:
-        connectionLimits:
-          maxConnectionPools: 1
-          maxConnections: 1
-          maxPendingRequests: 1
-          maxRequests: 1
-          maxRetries: 1
-`, config.CpNamespace, config.Mesh)),
-			Entry("inbound circuit breaker", fmt.Sprintf(`
-apiVersion: kuma.io/v1alpha1
-kind: MeshCircuitBreaker
-metadata:
-  name: mcb-inbound
-  namespace: %s
-  labels:
-    kuma.io/mesh: %s
-spec:
-  targetRef:
-    kind: Mesh
-  from:
     - targetRef:
         kind: Mesh
       default:

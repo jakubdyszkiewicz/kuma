@@ -52,7 +52,8 @@ var (
 		}},
 		Destinations: []*mesh_proto.Selector{{
 			Match: map[string]string{
-				mesh_proto.ServiceTag: "*",
+				mesh_proto.ServiceTag:  "*",
+				mesh_proto.ProtocolTag: "http",
 			},
 		}},
 		Conf: &mesh_proto.FaultInjection_Conf{
@@ -374,7 +375,7 @@ var (
 		},
 	}
 	MeshTrafficPermission = &meshtrafficpermissions.MeshTrafficPermission{
-		TargetRef: common_api.TargetRef{
+		TargetRef: &common_api.TargetRef{
 			Kind: "Mesh",
 		},
 		From: []meshtrafficpermissions.From{
@@ -389,7 +390,7 @@ var (
 		},
 	}
 	MeshAccessLog = &meshaccesslog.MeshAccessLog{
-		TargetRef: common_api.TargetRef{
+		TargetRef: &common_api.TargetRef{
 			Kind: "Mesh",
 		},
 		From: []meshaccesslog.From{

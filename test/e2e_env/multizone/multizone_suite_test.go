@@ -15,10 +15,15 @@ import (
 	"github.com/kumahq/kuma/test/e2e_env/multizone/inspect"
 	"github.com/kumahq/kuma/test/e2e_env/multizone/localityawarelb"
 	"github.com/kumahq/kuma/test/e2e_env/multizone/meshhttproute"
+	"github.com/kumahq/kuma/test/e2e_env/multizone/meshmultizoneservice"
+	"github.com/kumahq/kuma/test/e2e_env/multizone/meshservice"
 	"github.com/kumahq/kuma/test/e2e_env/multizone/meshtcproute"
 	"github.com/kumahq/kuma/test/e2e_env/multizone/meshtimeout"
+	"github.com/kumahq/kuma/test/e2e_env/multizone/meshtls"
 	"github.com/kumahq/kuma/test/e2e_env/multizone/meshtrafficpermission"
 	"github.com/kumahq/kuma/test/e2e_env/multizone/ownership"
+	"github.com/kumahq/kuma/test/e2e_env/multizone/producer"
+	"github.com/kumahq/kuma/test/e2e_env/multizone/reachablebackends"
 	"github.com/kumahq/kuma/test/e2e_env/multizone/resilience"
 	multizone_sync "github.com/kumahq/kuma/test/e2e_env/multizone/sync"
 	"github.com/kumahq/kuma/test/e2e_env/multizone/trafficpermission"
@@ -28,7 +33,6 @@ import (
 	"github.com/kumahq/kuma/test/e2e_env/multizone/zoneegress"
 	. "github.com/kumahq/kuma/test/framework"
 	"github.com/kumahq/kuma/test/framework/envs/multizone"
-	"github.com/kumahq/kuma/test/framework/universal_logs"
 )
 
 func TestE2E(t *testing.T) {
@@ -37,13 +41,8 @@ func TestE2E(t *testing.T) {
 
 var (
 	_ = E2ESynchronizedBeforeSuite(multizone.SetupAndGetState, multizone.RestoreState)
-	_ = ReportAfterSuite("cleanup", func(report Report) {
-		if Config.CleanupLogsOnSuccess {
-			universal_logs.CleanupIfSuccess(Config.UniversalE2ELogsPath, report)
-		}
-	})
-	_ = ReportAfterSuite("cp logs", multizone.PrintCPLogsOnFailure)
-	_ = ReportAfterSuite("kube state", multizone.PrintKubeState)
+	_ = SynchronizedAfterSuite(func() {}, multizone.SynchronizedAfterSuite)
+	_ = ReportAfterSuite("multizone after suite", multizone.AfterSuite)
 )
 
 var (
@@ -55,6 +54,7 @@ var (
 	_ = Describe("TrafficPermission", trafficpermission.TrafficPermission, Ordered)
 	_ = Describe("TrafficRoute", trafficroute.TrafficRoute, Ordered)
 	_ = Describe("MeshHTTPRoute", meshhttproute.Test, Ordered)
+	_ = Describe("MeshHTTPRoute MeshService", meshhttproute.MeshService, Ordered)
 	_ = Describe("MeshTCPRoute", meshtcproute.Test, Ordered)
 	_ = Describe("InboundPassthrough", inbound_communication.InboundPassthrough, Ordered)
 	_ = Describe("InboundPassthroughDisabled", inbound_communication.InboundPassthroughDisabled, Ordered)
@@ -62,7 +62,6 @@ var (
 	_ = Describe("Connectivity", connectivity.Connectivity, Ordered)
 	_ = Describe("Connectivity Gateway IPV6 CNI V2", connectivity.GatewayIPV6CNIV2, Ordered)
 	_ = Describe("Sync", multizone_sync.Sync, Ordered)
-	_ = Describe("Sync V2", multizone_sync.SyncLegacy, Ordered)
 	_ = Describe("MeshTrafficPermission", meshtrafficpermission.MeshTrafficPermission, Ordered)
 	_ = Describe("Zone Disable", zonedisable.ZoneDisable, Ordered)
 	_ = Describe("External Services", externalservices.ExternalServicesOnMultizoneUniversal, Ordered)
@@ -76,4 +75,14 @@ var (
 	_ = Describe("Advanced LocalityAwareness with MeshLoadBalancingStrategy with Gateway", localityawarelb.LocalityAwareLBGateway, Ordered)
 	_ = Describe("Advanced LocalityAwareness with MeshLoadBalancingStrategy and Enabled Egress", localityawarelb.LocalityAwareLBEgress, Ordered)
 	_ = Describe("Defaults", defaults.Defaults, Ordered)
+	_ = Describe("MeshService Sync", meshservice.Sync, Ordered)
+	_ = Describe("MeshService Connectivity", meshservice.Connectivity, Ordered)
+	_ = Describe("Targeting real MeshService in policies", meshservice.MeshServiceTargeting, Ordered)
+	_ = Describe("MeshMultiZoneService Connectivity", meshmultizoneservice.Connectivity, Ordered)
+	_ = Describe("MeshMultiZoneService MeshLbStrategy", localityawarelb.MeshMzService, Ordered)
+	_ = Describe("Available services", connectivity.AvailableServices, Ordered)
+	_ = Describe("ReachableBackends", reachablebackends.ReachableBackends, Ordered)
+	_ = Describe("Producer Policy Flow", producer.ProducerPolicyFlow, Ordered)
+	_ = Describe("MeshServiceReachableBackends", reachablebackends.MeshServicesWithReachableBackendsOption, Ordered)
+	_ = Describe("MeshTLS", meshtls.MeshTLS, Ordered)
 )
