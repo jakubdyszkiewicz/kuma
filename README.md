@@ -1,5 +1,6 @@
 [![][kuma-logo]][kuma-url]
 
+testCI
 **Builds**
 
 ![GitHub Actions master](https://github.com/kumahq/kuma/actions/workflows/build-test-distribute.yaml/badge.svg?branch=master)
